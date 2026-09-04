@@ -75,6 +75,7 @@ func TestParseOperators(t *testing.T) {
 		{"a = `x`", wire.OpEq, []any{"x"}},
 		{"a = \"x\"", wire.OpEq, []any{"x"}},
 		{"a = 'it\\'s'", wire.OpEq, []any{"it's"}},
+		{`a = 'C:\\new'`, wire.OpEq, []any{`C:\new`}},
 		{"a = -1.5", wire.OpEq, []any{json.Number("-1.5")}},
 		{"\u044e = 1", wire.OpEq, []any{json.Number("1")}},
 		{"na\u00efve_\u0441\u0442\u043e\u043b\u04311 = 1", wire.OpEq, []any{json.Number("1")}},
@@ -115,6 +116,8 @@ func TestParseErrors(t *testing.T) {
 		{"a in ()", "expected a value"},
 		{"a 'x'", "expected an operator"},
 		{"a = 'x", "unterminated string"},
+		{`a = 'C:\new'`, "unknown escape"},
+		{`a = 'x\`, "trailing backslash"},
 		{"a between 1 2", "expected `and`"},
 		{"a = '\u0437\u043d\u0430\u0447' and", "expected a column name"},
 	} {

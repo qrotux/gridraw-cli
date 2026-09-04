@@ -34,6 +34,7 @@ func TestTailErrors(t *testing.T) {
 		want string
 	}{
 		{[]string{}, "needs a grid name"},
+		{[]string{""}, "needs a grid name"},
 		{[]string{"where", "x = 1"}, "expected a grid name"},
 		{[]string{"users", "wehre", "x"}, "unexpected"},
 		{[]string{"users", "where"}, "needs a value"},

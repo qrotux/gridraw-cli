@@ -82,6 +82,9 @@ func parseTail(args []string) (tail, error) {
 		return t, &UsageError{Msg: "from needs a grid name: gridraw from GRID [columns \"…\"] [where \"…\"] …"}
 	}
 	t.Grid = args[0]
+	if t.Grid == "" {
+		return t, &UsageError{Msg: "from needs a grid name; an empty one would address the grid registry"}
+	}
 	if isKeyword(t.Grid) {
 		return t, &UsageError{Msg: fmt.Sprintf("expected a grid name, got the keyword %q", t.Grid)}
 	}

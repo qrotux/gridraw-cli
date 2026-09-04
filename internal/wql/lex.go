@@ -126,7 +126,13 @@ func (l *lexer) lexString(quote byte) (token, error) {
 			if l.pos+1 >= len(l.src) {
 				return token{}, errAt(l.src, l.pos, "trailing backslash")
 			}
-			sb.WriteByte(l.src[l.pos+1])
+			// A closed escape set, so a Windows path such as 'C:\new' is
+			// reported rather than silently read as "C:new".
+			esc := l.src[l.pos+1]
+			if esc != '\'' && esc != '`' && esc != '"' && esc != '\\' {
+				return token{}, errAt(l.src, l.pos, "unknown escape \\%c; the escapes are \\' \\` \\\" and \\\\", esc)
+			}
+			sb.WriteByte(esc)
 			l.pos += 2
 			continue
 		case quote:
