@@ -3,6 +3,7 @@
 
 # Build output
 /gridraw
+/bin/
 /dist/
 
 # Local tooling and editor state
