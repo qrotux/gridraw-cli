@@ -46,6 +46,14 @@ func New(w io.Writer, format Format, opt Options) (Writer, error) {
 		return &jsonWriter{w: w, opt: opt}, nil
 	case FormatJSONL:
 		return &jsonlWriter{w: w, opt: opt}, nil
+	case FormatYAML:
+		return &yamlWriter{w: w, opt: opt, envelope: true}, nil
+	case FormatYAMLA:
+		return &yamlWriter{w: w, opt: opt}, nil
+	case FormatCSV:
+		return newTableWriter(w, ',', opt), nil
+	case FormatTSV:
+		return newTableWriter(w, '\t', opt), nil
 	}
 	return nil, fmt.Errorf("unknown output format %q", format)
 }
