@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/qrotux/gridraw-cli/internal/render"
 	"golang.org/x/term"
 )
 
@@ -60,4 +62,39 @@ func (r *reporter) Done() {
 	if r.live && !r.quiet {
 		fmt.Fprint(r.out, "\r\033[K")
 	}
+}
+
+// resumeHint builds the command that continues an interrupted --all run.
+func resumeHint(args []string, format render.Format, formatName string, page int) string {
+	if !format.Streaming() {
+		return fmt.Sprintf("the %s output cannot be appended to; rerun with -o jsonl to resume into the same file", formatName)
+	}
+	var b strings.Builder
+	b.WriteString("gridraw from")
+	// The tail rejects a keyword given twice, so the original page clause has
+	// to go: the hint supplies its own.
+	for i, a := range args {
+		if i > 0 && (i%2 == 1) && strings.EqualFold(a, "page") {
+			continue
+		}
+		if i > 1 && (i%2 == 0) && strings.EqualFold(args[i-1], "page") {
+			continue
+		}
+		b.WriteString(" ")
+		b.WriteString(shellQuote(a))
+	}
+	fmt.Fprintf(&b, " -o %s --all page %d", formatName, page)
+	if format == render.FormatCSV || format == render.FormatTSV {
+		b.WriteString(" --no-header")
+	}
+	return b.String()
+}
+
+// shellQuote wraps an argument in single quotes when it holds anything the
+// shell would act on, so the printed command can be pasted as is.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\n\"'`$&|;<>()*?[]#~=%") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

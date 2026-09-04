@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/qrotux/gridraw-cli/internal/client"
@@ -50,7 +51,7 @@ func newFromCmd() *cobra.Command {
 				return err
 			}
 
-			req, columns, err := buildRequest(t, desc)
+			req, columns, err := buildRequest(t, desc, all)
 			if err != nil {
 				return err
 			}
@@ -59,7 +60,14 @@ func newFromCmd() *cobra.Command {
 			rep.pageSize = req.PageSize
 			opt := render.Options{Columns: columns, NullVal: nullVal, NoHeader: noHeader}
 			if all {
-				return &UsageError{Msg: "--all is not available yet"}
+				err := streamAll(cmd.Context(), cmd, api, t.Grid, req, format, opt, rep)
+				if err != nil {
+					if page, ok := failedPage(err); ok {
+						fmt.Fprintln(cmd.ErrOrStderr(), "Resume with:", resumeHint(args, format, string(format), page))
+					}
+					return err
+				}
+				return nil
 			}
 			return streamOne(cmd.Context(), cmd, api, t.Grid, req, format, opt, rep)
 		},
@@ -85,7 +93,7 @@ func pick(flag, def string) string {
 
 // buildRequest validates the tail against the descriptor and returns the
 // request plus the column order the text formats use.
-func buildRequest(t tail, desc *wire.Descriptor) (wire.RowsRequest, []string, error) {
+func buildRequest(t tail, desc *wire.Descriptor, all bool) (wire.RowsRequest, []string, error) {
 	columns, err := wql.Columns(t.Columns, desc)
 	if err != nil {
 		return wire.RowsRequest{}, nil, &UsageError{Msg: err.Error()}
@@ -114,7 +122,12 @@ func buildRequest(t tail, desc *wire.Descriptor) (wire.RowsRequest, []string, er
 	// page size is not ours to trust, so clamp it rather than send a request
 	// the server would reject.
 	pageSize := t.Limit
-	if pageSize == 0 {
+	switch {
+	case pageSize != 0:
+	case all:
+		// Under --all the descriptor's page size only costs requests.
+		pageSize = wire.MaxPageSize
+	default:
 		pageSize = min(max(desc.PageSize, wire.MinPageSize), wire.MaxPageSize)
 	}
 	page := t.Page
@@ -163,4 +176,63 @@ func streamOne(ctx context.Context, cmd *cobra.Command, api *client.Client, grid
 		}
 	}
 	return w.Close()
+}
+
+// streamAll pages until the server reports no next page. Head is written once,
+// Close only after the last page: an interrupted run must leave an unclosed
+// document rather than a valid but truncated one.
+func streamAll(ctx context.Context, cmd *cobra.Command, api *client.Client, grid string,
+	req wire.RowsRequest, format render.Format, opt render.Options, rep *reporter) error {
+	w, err := render.New(cmd.OutOrStdout(), format, opt)
+	if err != nil {
+		return &UsageError{Msg: err.Error()}
+	}
+	var written int64
+	headed := false
+	page := req.Page
+	for {
+		req.Page = page
+		resp, _, err := api.Rows(ctx, grid, req)
+		if err != nil {
+			rep.Done()
+			return &pageError{Page: page, Err: err}
+		}
+		if !headed {
+			headed = true
+			rep.Total(resp.Total)
+			if err := w.Head(resp.Total); err != nil {
+				return err
+			}
+		}
+		for _, row := range resp.Rows {
+			if err := w.Row(row); err != nil {
+				return err
+			}
+			written++
+		}
+		rep.Page(page, written, resp.Total)
+		if !resp.HasNext {
+			break
+		}
+		page++
+	}
+	rep.Done()
+	return w.Close()
+}
+
+// pageError names the page whose request failed, so the resume hint can be built.
+type pageError struct {
+	Page int
+	Err  error
+}
+
+func (e *pageError) Error() string { return fmt.Sprintf("page %d: %s", e.Page, e.Err) }
+func (e *pageError) Unwrap() error { return e.Err }
+
+func failedPage(err error) (int, bool) {
+	var pe *pageError
+	if errors.As(err, &pe) {
+		return pe.Page, true
+	}
+	return 0, false
 }

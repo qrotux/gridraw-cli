@@ -3,7 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/qrotux/gridraw-cli/internal/client"
 	"github.com/qrotux/gridraw-cli/internal/config"
+	"github.com/qrotux/gridraw-cli/internal/render"
 	"github.com/qrotux/gridraw-cli/internal/wire"
 	"github.com/spf13/cobra"
 )
@@ -36,14 +40,14 @@ func testDescriptor() *wire.Descriptor {
 
 func TestBuildRequestLimitOverridesTheDescriptorPageSize(t *testing.T) {
 	desc := testDescriptor()
-	req, _, err := buildRequest(tail{Grid: "users"}, desc)
+	req, _, err := buildRequest(tail{Grid: "users"}, desc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if req.PageSize != 25 || req.Page != 1 {
 		t.Errorf("page %d size %d, want page 1 size 25", req.Page, req.PageSize)
 	}
-	req, _, err = buildRequest(tail{Grid: "users", Limit: 3, Page: 4}, desc)
+	req, _, err = buildRequest(tail{Grid: "users", Limit: 3, Page: 4}, desc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +62,7 @@ func TestBuildRequestClampsADescriptorPageSize(t *testing.T) {
 	for _, tc := range []struct{ have, want int }{{0, wire.MinPageSize}, {500, wire.MaxPageSize}, {25, 25}} {
 		desc := testDescriptor()
 		desc.PageSize = tc.have
-		req, _, err := buildRequest(tail{Grid: "users"}, desc)
+		req, _, err := buildRequest(tail{Grid: "users"}, desc, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +77,7 @@ func TestBuildRequestClampsADescriptorPageSize(t *testing.T) {
 // when the request carries no column list.
 func TestBuildRequestFallsBackToDefaultVisible(t *testing.T) {
 	desc := testDescriptor()
-	req, order, err := buildRequest(tail{Grid: "users"}, desc)
+	req, order, err := buildRequest(tail{Grid: "users"}, desc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +88,7 @@ func TestBuildRequestFallsBackToDefaultVisible(t *testing.T) {
 	if strings.Join(order, ",") != strings.Join(req.Columns, ",") {
 		t.Errorf("render order %v differs from the request columns %v", order, req.Columns)
 	}
-	req, order, err = buildRequest(tail{Grid: "users", Columns: "id,email"}, desc)
+	req, order, err = buildRequest(tail{Grid: "users", Columns: "id,email"}, desc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +100,7 @@ func TestBuildRequestFallsBackToDefaultVisible(t *testing.T) {
 func TestBuildRequestSearchWithoutASearchableColumn(t *testing.T) {
 	desc := testDescriptor()
 	desc.Search = nil
-	_, _, err := buildRequest(tail{Grid: "users", Search: "ivan"}, desc)
+	_, _, err := buildRequest(tail{Grid: "users", Search: "ivan"}, desc, false)
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("err = %v, want a UsageError", err)
@@ -117,7 +121,7 @@ func TestBuildRequestWhereErrorIsAUsageError(t *testing.T) {
 		{name: "bad columns", columns: "nosuch"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := buildRequest(tail{Grid: "users", Where: tc.where, Order: tc.order, Columns: tc.columns}, testDescriptor())
+			_, _, err := buildRequest(tail{Grid: "users", Where: tc.where, Order: tc.order, Columns: tc.columns}, testDescriptor(), false)
 			var usage *UsageError
 			if !errors.As(err, &usage) {
 				t.Fatalf("err = %v, want a UsageError", err)
@@ -130,7 +134,7 @@ func TestBuildRequestWhereErrorIsAUsageError(t *testing.T) {
 }
 
 func TestBuildRequestOmitsAbsentClauses(t *testing.T) {
-	req, _, err := buildRequest(tail{Grid: "users"}, testDescriptor())
+	req, _, err := buildRequest(tail{Grid: "users"}, testDescriptor(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,5 +248,113 @@ func TestFromUnknownOutputFormatIsAUsageError(t *testing.T) {
 	_, _, err := runFrom(t, stubDescriptor, `{"rows":[]}`, "users", "-o", "nope")
 	if ExitCode(err) != 2 {
 		t.Fatalf("err = %v, exit %d; want a usage error", err, ExitCode(err))
+	}
+}
+
+func decodeBody(t *testing.T, r *http.Request, v any) {
+	t.Helper()
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		t.Fatalf("cannot decode the request body: %v", err)
+	}
+}
+
+// pagedServer serves `pages` pages of one row each and fails on failAt (0 = never).
+func pagedServer(t *testing.T, pages, failAt int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req wire.RowsRequest
+		decodeBody(t, r, &req)
+		if req.Page == failAt {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":"query failed"}`)
+			return
+		}
+		total := int64(pages)
+		fmt.Fprintf(w, `{"rows":[{"id":"row%d"}],"total":%d,"hasPrev":%t,"hasNext":%t}`,
+			req.Page, total, req.Page > 1, req.Page < pages)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestAllPagesUntilHasNext(t *testing.T) {
+	srv := pagedServer(t, 3, 0)
+	var out, errOut bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	rep := newReporter(&errOut, true, false)
+	api := client.New(srv.URL, "", nil)
+	req := wire.RowsRequest{Page: 1, PageSize: 100}
+	err := streamAll(context.Background(), cmd, api, "users", req, render.FormatJSONL,
+		render.Options{Columns: []string{"id"}}, rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\"id\":\"row1\"}\n{\"id\":\"row2\"}\n{\"id\":\"row3\"}\n"
+	if got := out.String(); got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestAllLeavesTheStreamUnclosedOnFailure(t *testing.T) {
+	srv := pagedServer(t, 5, 3)
+	var out, errOut bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	rep := newReporter(&errOut, true, false)
+	err := streamAll(context.Background(), cmd, client.New(srv.URL, "", nil), "users",
+		wire.RowsRequest{Page: 1, PageSize: 100}, render.FormatJSONA,
+		render.Options{Columns: []string{"id"}}, rep)
+	if err == nil {
+		t.Fatal("want the server error")
+	}
+	if ExitCode(err) != 5 {
+		t.Errorf("exit code = %d, want 5", ExitCode(err))
+	}
+	if strings.HasSuffix(out.String(), "]") {
+		t.Errorf("stdout = %q, want it left unclosed", out.String())
+	}
+	if !strings.Contains(err.Error(), "page 3") {
+		t.Errorf("error = %q, want it to name the page", err)
+	}
+}
+
+func TestResumeHint(t *testing.T) {
+	got := resumeHint([]string{"users", "where", "x = 1"}, render.FormatCSV, "csv", 37)
+	if !strings.Contains(got, "--all page 37") || !strings.Contains(got, "--no-header") {
+		t.Errorf("hint = %q, want the page and --no-header", got)
+	}
+	// The tail rejects "page" twice, so a run that already named a page must
+	// not have that clause copied into the hint.
+	got = resumeHint([]string{"users", "page", "2", "limit", "50"}, render.FormatJSONL, "jsonl", 9)
+	if got != "gridraw from users limit 50 -o jsonl --all page 9" {
+		t.Errorf("hint = %q, want the original page clause replaced", got)
+	}
+	got = resumeHint([]string{"users"}, render.FormatJSONA, "jsona", 4)
+	if !strings.Contains(got, "jsonl") {
+		t.Errorf("hint = %q, want it to point at jsonl", got)
+	}
+}
+
+// TestBuildRequestAllDefaultsToTheLargestPage pins that --all asks for the
+// server's maximum page when no limit clause is given: fewer requests for the
+// same rows. An explicit limit still wins.
+func TestBuildRequestAllDefaultsToTheLargestPage(t *testing.T) {
+	desc := testDescriptor()
+	req, _, err := buildRequest(tail{Grid: "users"}, desc, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.PageSize != wire.MaxPageSize {
+		t.Errorf("page size = %d, want %d", req.PageSize, wire.MaxPageSize)
+	}
+	req, _, err = buildRequest(tail{Grid: "users", Limit: 7}, desc, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.PageSize != 7 {
+		t.Errorf("page size = %d, want the limit clause to win", req.PageSize)
 	}
 }
