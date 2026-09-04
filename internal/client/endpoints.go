@@ -67,3 +67,9 @@ func decode(raw []byte, v any) error {
 	}
 	return nil
 }
+
+// Raw performs a request and returns the response body untouched, for commands
+// that print the server's JSON byte for byte.
+func (c *Client) Raw(ctx context.Context, method, path string) ([]byte, error) {
+	return c.do(ctx, method, path, nil)
+}

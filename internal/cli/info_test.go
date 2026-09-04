@@ -1,0 +1,135 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/qrotux/gridraw-cli/internal/client"
+	"github.com/qrotux/gridraw-cli/internal/config"
+	"github.com/spf13/cobra"
+)
+
+func TestInfoFormatRejectsDataFormats(t *testing.T) {
+	if _, err := infoFormat("csv", "yaml"); err == nil {
+		t.Fatal("want a usage error for csv on an info command")
+	}
+	got, err := infoFormat("", "json")
+	if err != nil || got != "json" {
+		t.Errorf("infoFormat(\"\", \"json\") = %q, %v; want json", got, err)
+	}
+	got, err = infoFormat("yaml", "json")
+	if err != nil || got != "yaml" {
+		t.Errorf("-o must win over the profile default, got %q", got)
+	}
+}
+
+func TestJSONToYAMLKeepsNumbers(t *testing.T) {
+	var v any
+	dec := json.NewDecoder(strings.NewReader(`{"pageSize":25,"name":"users"}`))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	out, err := jsonToYAML(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "pageSize: 25") {
+		t.Errorf("yaml = %s, want an unquoted number", out)
+	}
+}
+
+// runInfo runs one information command against a stub server, in a working
+// directory holding the only configuration the command can discover.
+func runInfo(t *testing.T, cmd *cobra.Command, body string, args ...string) (string, string, error) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("HOME", dir)
+	conf := "current: p\nconfigs:\n  p:\n    host: " + srv.URL + "/api/grids\n"
+	if err := os.WriteFile(config.LocalFileName, []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs(args)
+	err := cmd.ExecuteContext(context.Background())
+	return stdout.String(), stderr.String(), err
+}
+
+func TestInfoListPrintsYAMLByDefaultAndJSONVerbatim(t *testing.T) {
+	body := `[{"id":"users","pageSize":25}]`
+	stdout, _, err := runInfo(t, newListCmd(), body)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(stdout, "pageSize: 25") {
+		t.Errorf("stdout = %q, want yaml with an unquoted number", stdout)
+	}
+	stdout, _, err = runInfo(t, newListCmd(), body, "-o", "json")
+	if err != nil {
+		t.Fatalf("list -o json: %v", err)
+	}
+	if stdout != body+"\n" {
+		t.Errorf("stdout = %q, want the body byte for byte", stdout)
+	}
+}
+
+func TestInfoGridWarmsTheCache(t *testing.T) {
+	body := `{"id":"users","columns":[]}`
+	stdout, _, err := runInfo(t, newGridCmd(), body, "users", "-o", "json")
+	if err != nil {
+		t.Fatalf("grid: %v", err)
+	}
+	if stdout != body+"\n" {
+		t.Errorf("stdout = %q", stdout)
+	}
+	dir, err := client.DefaultDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "p", "users.json")); err != nil {
+		t.Errorf("cache entry: %v", err)
+	}
+}
+
+func TestInfoGridNoCacheDoesNotWrite(t *testing.T) {
+	if _, _, err := runInfo(t, newGridCmd(), `{"id":"users"}`, "users", "--no-cache"); err != nil {
+		t.Fatalf("grid --no-cache: %v", err)
+	}
+	dir, err := client.DefaultDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "p", "users.json")); !os.IsNotExist(err) {
+		t.Errorf("--no-cache wrote an entry: %v", err)
+	}
+}
+
+func TestInfoRejectsADataFormat(t *testing.T) {
+	_, _, err := runInfo(t, newListCmd(), `[]`, "-o", "csv")
+	var usage *UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("err = %v, want a UsageError", err)
+	}
+	if !strings.Contains(usage.Msg, "yaml or json") {
+		t.Errorf("message = %q, want the two allowed formats", usage.Msg)
+	}
+}
