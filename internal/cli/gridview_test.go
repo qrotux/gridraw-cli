@@ -23,9 +23,10 @@ func viewFixture() *wire.Descriptor {
 		DefaultSort: wire.SortSpec{Column: "createdAt", Dir: "desc"},
 		Search:      &wire.Search{Columns: []string{"Email"}},
 		Columns: []wire.Column{
-			{Key: "email", Type: wire.TypeString, Sortable: true, DefaultVisible: true,
+			{Key: "email", Title: "Email", Description: "Login email", Type: wire.TypeString,
+				Sortable: true, DefaultVisible: true,
 				Filter: ops(wire.OpEq, wire.OpContains, wire.OpNotContains)},
-			{Key: "role", Type: wire.TypeEnum, Sortable: true, Filter: role},
+			{Key: "role", Title: "Role", Type: wire.TypeEnum, Sortable: true, Filter: role},
 			{Key: "price", Type: wire.TypeDecimal, Filter: ops(wire.OpGte, wire.OpBetween)},
 			{Key: "slot", Type: wire.TypeTime, Step: 900, Filter: ops(wire.OpEq)},
 			{Key: "ticks", Type: wire.TypeTime, Step: 1, Filter: ops(wire.OpEq)},
@@ -53,11 +54,14 @@ defaultSort: createdAt desc
 search: [Email]
 columns:
     - key: email
+      title: Email
       type: string
+      description: Login email
       filters: [=, contains, not contains]
       sortable: true
       visible: true
     - key: role
+      title: Role
       type: enum
       enum: {user: User, admin: Admin}
       filters: [in, not in]

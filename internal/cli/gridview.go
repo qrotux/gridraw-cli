@@ -108,9 +108,10 @@ func (f flow) MarshalYAML() (any, error) {
 }
 
 // gridView condenses a descriptor to what someone writing a query needs: the
-// column types, the operators in the spelling the where language accepts, the
-// enum values, and how a value of an awkward type is written. Everything the
-// server sends for the benefit of a UI — operator labels, widgets — is dropped.
+// column names and types, the operators in the spelling the where language
+// accepts, the enum values, and how a value of an awkward type is written.
+// What the server sends purely to render a UI — operator labels, filter
+// widgets, page size options — is dropped.
 func gridView(d *wire.Descriptor) object {
 	out := object{}.
 		add("name", d.Name).
@@ -140,6 +141,7 @@ func columnView(c *wire.Column) object {
 	}
 	out := object{}.
 		add("key", c.Key).
+		add("title", c.Title).
 		add("type", typeName).
 		add("description", c.Description)
 

@@ -204,12 +204,13 @@ func TestInfoGridPrintsTheQueryView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, dropped := range []string{`"title"`, `"label"`, `"is one of"`} {
+	for _, dropped := range []string{`"label"`, `"is one of"`} {
 		if strings.Contains(view, dropped) {
 			t.Errorf("the query view should drop %s:\n%s", dropped, view)
 		}
 	}
-	if !strings.Contains(view, `"key": "id"`) || !strings.Contains(view, `"filters"`) {
+	if !strings.Contains(view, `"key": "id"`) || !strings.Contains(view, `"title": "ID"`) ||
+		!strings.Contains(view, `"filters"`) {
 		t.Errorf("the query view lost what a query needs:\n%s", view)
 	}
 }

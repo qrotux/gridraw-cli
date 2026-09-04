@@ -185,6 +185,9 @@ operators are printed the way the `where` language accepts them, so they can be
 copied straight into a filter; a test pins that every printed spelling parses
 back to the operator it names.
 
+The sample below adds titles and a description to show the shape; the demo
+grid itself publishes none, and those keys are then absent.
+
 ```console
 $ gridraw grid example
 name: example
@@ -194,23 +197,28 @@ defaultSort: createdAt desc
 search: [Email, Tags]
 columns:
     - key: email
+      title: Email
       type: string
+      description: Login email
       filters: [=, '!=', contains, not contains, starts with, ends with]
       sortable: true
       visible: true
     - key: role
+      title: Role
       type: enum
       enum: {user: User, admin: Admin}
       filters: [in, not in]
       sortable: true
       visible: true
     - key: price
+      title: Price
       type: decimal
       value: quoted, e.g. '19.99'
       filters: [=, '!=', '>', '>=', <, <=, between, not between]
       sortable: true
       visible: true
     - key: opensAt
+      title: Opens at
       type: time
       value: HH:MM:SS, quoted
       step: 900
@@ -218,18 +226,22 @@ columns:
       sortable: true
       visible: true
     - key: tags
+      title: Tags
       type: string[]
       filters: [has any, has all, has only, not has any, is empty, is not empty]
       visible: true
     - key: prefs
+      title: Preferences
       type: json
 ```
 
-Per column: `type` (an array column carries `[]`), `enum` as value → label,
-`value` when the literal form is not obvious, `step` when a `time` or
-`datetime` column is coarser than a second, `filters` in `where` spelling,
-`sortable` and `visible`. A key is omitted when it says nothing — a column with
-no `filters` cannot be filtered at all, and `prefs` above is an example.
+Per column: `title` and `description` as the server localises them, `type` (an
+array column carries `[]`), `enum` as value → label, `value` when the literal
+form is not obvious, `step` when a `time` or `datetime` column is coarser than
+a second, `filters` in `where` spelling, `sortable` and `visible`. The grid's
+own `description` sits next to its name. A key is omitted when it says nothing
+— a column with no `filters` cannot be filtered at all, and `prefs` above is an
+example — so a grid that publishes no descriptions shows none.
 `skipTotal: true` appears only on a grid whose rows response carries no count.
 
 `--raw` prints the server's descriptor instead, unchanged in `json` and
