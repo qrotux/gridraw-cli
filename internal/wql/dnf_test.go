@@ -65,6 +65,29 @@ func TestDNFGroupLimit(t *testing.T) {
 	}
 }
 
+func TestDNFGroupLimitBailsBeforeExploding(t *testing.T) {
+	// 40 chained two-way ORs multiply to 2^40 groups if fully built: the old
+	// code would exhaust time and memory computing that. The fix must bail
+	// out of the cross product as soon as it would exceed the limit, so this
+	// returns promptly instead of hanging.
+	var parts []string
+	for i := 0; i < 40; i++ {
+		parts = append(parts, "(a = 1 or a = 2)")
+	}
+	src := strings.Join(parts, " and ")
+	node, err := ParseWhere(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = DNF(node)
+	if err == nil {
+		t.Fatal("want an error over the group limit")
+	}
+	if !strings.Contains(err.Error(), "10") {
+		t.Errorf("error = %q, want it to name the limit", err)
+	}
+}
+
 func TestDNFClauseLimit(t *testing.T) {
 	var parts []string
 	for i := 0; i < 21; i++ {
