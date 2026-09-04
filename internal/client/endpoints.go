@@ -10,26 +10,6 @@ import (
 	"github.com/qrotux/gridraw-cli/internal/wire"
 )
 
-// List returns GET <base>/-/list.
-func (c *Client) List(ctx context.Context) ([]wire.GridInfo, error) {
-	raw, err := c.do(ctx, "GET", "/-/list", nil)
-	if err != nil {
-		return nil, err
-	}
-	var out []wire.GridInfo
-	return out, decode(raw, &out)
-}
-
-// Registry returns GET <base>/-/registry.
-func (c *Client) Registry(ctx context.Context) ([]wire.CatalogEntry, error) {
-	raw, err := c.do(ctx, "GET", "/-/registry", nil)
-	if err != nil {
-		return nil, err
-	}
-	var out []wire.CatalogEntry
-	return out, decode(raw, &out)
-}
-
 // Descriptor returns GET <base>/{grid} both decoded and raw; the raw bytes are
 // what `gridraw grid {id} -o json` prints and what the cache stores.
 func (c *Client) Descriptor(ctx context.Context, grid string) (*wire.Descriptor, []byte, error) {

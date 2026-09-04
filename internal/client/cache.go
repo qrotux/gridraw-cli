@@ -100,16 +100,20 @@ func (c *Cache) get(grid string) *wire.Descriptor {
 	return &d
 }
 
-// path returns Dir/Profile/{grid}.json and reports whether grid is usable as
-// a single path segment. A grid name reaches here straight from a
-// command-line argument, so one containing a separator or a ".." segment is
-// refused rather than sanitised: the caller treats a refusal as a cache miss
+// path returns Dir/Profile/{grid}.json and reports whether both segments are
+// usable as one path element. The grid name is a command-line argument and the
+// profile name comes from --config, so a segment holding a separator or a ".."
+// is refused rather than sanitised: the caller treats a refusal as a cache miss
 // or a no-op, which costs one HTTP request and nothing else.
 func (c *Cache) path(grid string) (string, bool) {
-	if grid == "" || grid == "." || grid == ".." || strings.ContainsAny(grid, `/\`) {
+	if !safeSegment(c.Profile) || !safeSegment(grid) {
 		return "", false
 	}
 	return filepath.Join(c.Dir, c.Profile, grid+".json"), true
+}
+
+func safeSegment(s string) bool {
+	return s != "" && s != "." && s != ".." && !strings.ContainsAny(s, `/\`)
 }
 
 func (c *Cache) ttl() time.Duration {

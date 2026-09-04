@@ -96,13 +96,26 @@ func TestCacheOffWritesNothing(t *testing.T) {
 	}
 }
 
-func TestUnsafeGridNameIsNotCached(t *testing.T) {
-	for _, name := range []string{"../escape", "sub/dir"} {
+// Both path segments come from the command line — the grid from an argument,
+// the profile from --config — so neither may escape the cache root.
+func TestUnsafeNameIsNotCached(t *testing.T) {
+	cases := map[string]struct{ profile, grid string }{
+		"grid dotdot":    {"default", "../escape"},
+		"grid separator": {"default", "sub/dir"},
+		"profile dotdot": {"../pwned", "users"},
+		"profile empty":  {"", "users"},
+	}
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			cache, c, hits := newCachedFixture(t)
+			cache.Profile = tc.profile
+			// The walk below starts one level above Dir, so a profile that
+			// climbs out of the cache root still lands inside it.
+			root := cache.Dir
+			cache.Dir = filepath.Join(root, "gridraw")
 			ctx := context.Background()
 
-			d, err := cache.Descriptor(ctx, c, name, CacheDefault)
+			d, err := cache.Descriptor(ctx, c, tc.grid, CacheDefault)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,21 +124,21 @@ func TestUnsafeGridNameIsNotCached(t *testing.T) {
 			}
 
 			var entries []os.DirEntry
-			filepath.WalkDir(cache.Dir, func(p string, e os.DirEntry, err error) error {
+			filepath.WalkDir(root, func(p string, e os.DirEntry, err error) error {
 				if err == nil && !e.IsDir() {
 					entries = append(entries, e)
 				}
 				return nil
 			})
 			if len(entries) != 0 {
-				t.Errorf("cache directory holds %d files, want 0 for an unsafe grid name", len(entries))
+				t.Errorf("cache directory holds %d files, want 0 for an unsafe name", len(entries))
 			}
 
-			if _, err := cache.Descriptor(ctx, c, name, CacheDefault); err != nil {
+			if _, err := cache.Descriptor(ctx, c, tc.grid, CacheDefault); err != nil {
 				t.Fatal(err)
 			}
 			if *hits != 2 {
-				t.Errorf("hits = %d, want 2: an unsafe grid name must never be served from the cache", *hits)
+				t.Errorf("hits = %d, want 2: an unsafe name must never be served from the cache", *hits)
 			}
 		})
 	}

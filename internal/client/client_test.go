@@ -38,7 +38,7 @@ func TestEndpointPathsAndAuth(t *testing.T) {
 	c := New(srv.URL+"/api/grids/", "Bearer t", nil) // trailing slash on purpose
 	ctx := context.Background()
 
-	if _, err := c.List(ctx); err != nil {
+	if _, err := c.Raw(ctx, "GET", "/-/list"); err != nil {
 		t.Fatal(err)
 	}
 	if gotPath != "/api/grids/-/list" {
@@ -47,7 +47,7 @@ func TestEndpointPathsAndAuth(t *testing.T) {
 	if gotAuth != "Bearer t" {
 		t.Errorf("auth = %q", gotAuth)
 	}
-	if _, err := c.Registry(ctx); err != nil {
+	if _, err := c.Raw(ctx, "GET", "/-/registry"); err != nil {
 		t.Fatal(err)
 	}
 	if gotPath != "/api/grids/-/registry" {
@@ -81,7 +81,7 @@ func TestNoAuthHeaderWhenEmpty(t *testing.T) {
 		w.Write([]byte(`[]`))
 	}))
 	defer srv.Close()
-	if _, err := New(srv.URL, "", nil).List(context.Background()); err != nil {
+	if _, err := New(srv.URL, "", nil).Raw(context.Background(), "GET", "/-/list"); err != nil {
 		t.Fatal(err)
 	}
 	if seen {

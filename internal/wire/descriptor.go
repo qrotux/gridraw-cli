@@ -45,27 +45,6 @@ const (
 	TypeJSON     = "json"
 )
 
-// GridInfo is one entry of GET <base>/-/list.
-type GridInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-// CatalogEntry is one entry of GET <base>/-/registry.
-type CatalogEntry struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Columns     []CatalogColumn `json:"columns"`
-}
-
-// CatalogColumn is a column as the registry endpoint publishes it.
-type CatalogColumn struct {
-	Key         string `json:"key"`
-	Title       string `json:"title"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-}
-
 // Descriptor is GET <base>/{name}.
 type Descriptor struct {
 	Name            string   `json:"name"`
