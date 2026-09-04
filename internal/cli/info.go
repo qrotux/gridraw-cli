@@ -124,17 +124,26 @@ func newGridCmd() *cobra.Command {
 			}
 			// Always a live fetch: the command reports the server's state. The
 			// body is then cached, since the request has been paid for anyway.
-			_, raw, err := api.Descriptor(cmd.Context(), args[0])
+			desc, raw, err := api.Descriptor(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 			if noCache, _ := cmd.Flags().GetBool("no-cache"); !noCache {
 				cache.Put(args[0], raw)
 			}
-			return writeInfo(cmd, raw, format)
+			if rawOut, _ := cmd.Flags().GetBool("raw"); rawOut {
+				return writeInfo(cmd, raw, format)
+			}
+			body, err := renderView(gridView(desc), format)
+			if err != nil {
+				return err
+			}
+			_, err = cmd.OutOrStdout().Write(body)
+			return err
 		},
 	}
 	cmd.Flags().StringVarP(&output, "output", "o", "", "output format: yaml or json")
 	cmd.Flags().Bool("no-cache", false, "do not write the fetched descriptor into the cache")
+	cmd.Flags().Bool("raw", false, "print the server's descriptor unchanged instead of the query view")
 	return cmd
 }

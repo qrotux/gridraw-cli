@@ -177,14 +177,66 @@ nearest file that was read, so a local file keeps its precedence.
 | `gridraw grid NAME` | `GET {host}/{grid}` |
 
 Both commands print in `defaultInfoOutput`, overridden by `-o/--output` with
-`json` or `yaml`. `json` copies the server's body as it came; `yaml` converts
-it. A data format such as `csv` is rejected here.
+`json` or `yaml`. A data format such as `csv` is rejected here.
+
+`gridraw grid NAME` prints a **query view** of the descriptor: what someone —
+or something — writing a query needs, and nothing that exists for a UI. The
+operators are printed the way the `where` language accepts them, so they can be
+copied straight into a filter; a test pins that every printed spelling parses
+back to the operator it names.
 
 ```console
-$ gridraw list
-- name: example
+$ gridraw grid example
+name: example
+idColumn: id
+pageSize: 10
+defaultSort: createdAt desc
+search: [Email, Tags]
+columns:
+    - key: email
+      type: string
+      filters: [=, '!=', contains, not contains, starts with, ends with]
+      sortable: true
+      visible: true
+    - key: role
+      type: enum
+      enum: {user: User, admin: Admin}
+      filters: [in, not in]
+      sortable: true
+      visible: true
+    - key: price
+      type: decimal
+      value: quoted, e.g. '19.99'
+      filters: [=, '!=', '>', '>=', <, <=, between, not between]
+      sortable: true
+      visible: true
+    - key: opensAt
+      type: time
+      value: HH:MM:SS, quoted
+      step: 900
+      filters: [=, '!=', '>', '>=', <, <=, between, not between]
+      sortable: true
+      visible: true
+    - key: tags
+      type: string[]
+      filters: [has any, has all, has only, not has any, is empty, is not empty]
+      visible: true
+    - key: prefs
+      type: json
+```
 
-$ gridraw grid example -o json | head -c 120
+Per column: `type` (an array column carries `[]`), `enum` as value → label,
+`value` when the literal form is not obvious, `step` when a `time` or
+`datetime` column is coarser than a second, `filters` in `where` spelling,
+`sortable` and `visible`. A key is omitted when it says nothing — a column with
+no `filters` cannot be filtered at all, and `prefs` above is an example.
+`skipTotal: true` appears only on a grid whose rows response carries no count.
+
+`--raw` prints the server's descriptor instead, unchanged in `json` and
+converted in `yaml`:
+
+```console
+$ gridraw grid example --raw -o json | head -c 120
 {"name":"example","idColumn":"id","pageSize":10,"pageSizeOptions":[10,25,50,100],"defaultSort":{"column":"createdAt",...
 ```
 
@@ -195,6 +247,7 @@ it got — it reports the server's state and warms the cache for the next `from`
 | flag | commands | meaning |
 |---|---|---|
 | `-o`, `--output=FORMAT` | `list`, `grid` | `yaml` or `json` |
+| `--raw` | `grid NAME` | print the server's descriptor instead of the query view |
 | `--no-cache` | `grid` | do not write the fetched descriptor into the cache |
 
 ## Querying rows: `from`

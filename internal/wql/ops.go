@@ -60,3 +60,59 @@ func shapeOf(op wire.Op) valueShape {
 	}
 	return shapeScalar
 }
+
+// spellings is the form each operator is printed in, chosen as the one a user
+// is most likely to type. Several operators have more than one accepted
+// spelling; the round-trip test pins that every entry here parses back.
+var spellings = map[wire.Op]string{
+	wire.OpEq:             "=",
+	wire.OpNeq:            "!=",
+	wire.OpGt:             ">",
+	wire.OpGte:            ">=",
+	wire.OpLt:             "<",
+	wire.OpLte:            "<=",
+	wire.OpContains:       "contains",
+	wire.OpNotContains:    "not contains",
+	wire.OpStarts:         "starts with",
+	wire.OpEnds:           "ends with",
+	wire.OpIn:             "in",
+	wire.OpNotIn:          "not in",
+	wire.OpBetween:        "between",
+	wire.OpNotBetween:     "not between",
+	wire.OpIsNull:         "is null",
+	wire.OpIsNotNull:      "is not null",
+	wire.OpContainsAny:    "has any",
+	wire.OpContainsAll:    "has all",
+	wire.OpContainsOnly:   "has only",
+	wire.OpNotContainsAny: "not has any",
+	wire.OpIsEmpty:        "is empty",
+	wire.OpIsNotEmpty:     "is not empty",
+}
+
+// Spelling returns how an operator is written in a where clause. An operator
+// the language does not know is returned as the server spells it.
+func Spelling(op wire.Op) string {
+	if s, ok := spellings[op]; ok {
+		return s
+	}
+	return string(op)
+}
+
+// ValueHint describes how a value of this column type is written, for the
+// types whose form is not obvious. It is empty when the literal speaks for
+// itself.
+func ValueHint(colType string) string {
+	switch colType {
+	case wire.TypeDate:
+		return "YYYY-MM-DD, quoted"
+	case wire.TypeTime:
+		return "HH:MM:SS, quoted"
+	case wire.TypeDatetime:
+		return "RFC 3339, quoted"
+	case wire.TypeDecimal:
+		return "quoted, e.g. '19.99'"
+	case wire.TypeUUID:
+		return "quoted uuid"
+	}
+	return ""
+}

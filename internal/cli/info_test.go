@@ -106,7 +106,7 @@ func TestInfoListPrintsYAMLByDefaultAndJSONVerbatim(t *testing.T) {
 }
 
 func TestInfoGridWarmsTheCache(t *testing.T) {
-	body := `{"id":"users","columns":[]}`
+	body := `{"name":"users","idColumn":"id","pageSize":25,"columns":[]}`
 	stdout, path, err := runInfo(t, newGridCmd(), body, "users", "-o", "json")
 	if err != nil {
 		t.Fatalf("grid: %v", err)
@@ -114,7 +114,7 @@ func TestInfoGridWarmsTheCache(t *testing.T) {
 	if path != "/api/grids/users" {
 		t.Errorf("requested %q, want the descriptor endpoint", path)
 	}
-	if stdout != body+"\n" {
+	if !strings.Contains(stdout, `"name": "users"`) {
 		t.Errorf("stdout = %q", stdout)
 	}
 	dir, err := client.DefaultDir()
@@ -182,5 +182,34 @@ func TestInfoYAMLKeepsTheNumberLiteral(t *testing.T) {
 func TestInfoRejectsATrailingValue(t *testing.T) {
 	if _, _, err := runInfo(t, newListCmd(), `{"a":1} {"b":2}`); err == nil {
 		t.Fatal("a body holding two JSON values must not print only the first")
+	}
+}
+
+func TestInfoGridRawPrintsTheServerBody(t *testing.T) {
+	const body = `{"name":"users","idColumn":"id","pageSize":25,"columns":[{"key":"id","type":"uuid","title":"ID","sortable":true}]}`
+
+	raw, _, err := runInfo(t, newGridCmd(), body, "users", "--raw", "-o", "json", "--no-cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw != body+"\n" {
+		t.Errorf("--raw = %q, want the server body verbatim", raw)
+	}
+}
+
+func TestInfoGridPrintsTheQueryView(t *testing.T) {
+	const body = `{"name":"users","idColumn":"id","pageSize":25,"columns":[{"key":"id","type":"uuid","title":"ID","sortable":true,"filter":{"operators":[{"op":"in","label":"is one of"}]}}]}`
+
+	view, _, err := runInfo(t, newGridCmd(), body, "users", "-o", "json", "--no-cache")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dropped := range []string{`"title"`, `"label"`, `"is one of"`} {
+		if strings.Contains(view, dropped) {
+			t.Errorf("the query view should drop %s:\n%s", dropped, view)
+		}
+	}
+	if !strings.Contains(view, `"key": "id"`) || !strings.Contains(view, `"filters"`) {
+		t.Errorf("the query view lost what a query needs:\n%s", view)
 	}
 }
