@@ -21,14 +21,17 @@ There is no "not" in front of a group — use a negative operator instead.
 
 OPERATORS
 
-  written                  sent to the server
+  written                  sent to the server     also accepted
   =                        eq
-  !=  <>                   neq
-  >  >=  <  <=             gt  gte  lt  lte
-  ~   contains             contains
-  !~  not contains         notContains
-  starts, starts with      starts
-  ends, ends with          ends
+  !=                       neq                    <>
+  >                        gt
+  >=                       gte
+  <                        lt
+  <=                       lte
+  contains                 contains               ~
+  not contains             notContains            !~
+  starts with              starts                 starts
+  ends with                ends                   ends
   in (…)                   in
   not in (…)               notIn
   between a and b          between
@@ -71,6 +74,12 @@ as a string — this applies to list elements and to both bounds of a range:
 uuid values are lowercased. enum values are checked against the descriptor's
 list, with the nearest name suggested on a typo. date, time and datetime values
 are sent as written and validated by the server.
+
+A time or datetime column may carry a resolution: "gridraw grid NAME" prints it
+as "step", in seconds. Values must be aligned to it — with step 900, '09:15:00'
+is accepted and '09:07:00' is refused by the server — and the operators then
+act on whole buckets, so "= '09:15:00'" matches everything up to '09:29:59'.
+This is the one rule the CLI cannot check for you.
 
 LIMITS
 

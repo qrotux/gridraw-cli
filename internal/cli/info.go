@@ -115,7 +115,11 @@ func newGridCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			rawOut, _ := cmd.Flags().GetBool("raw")
 			if len(args) == 0 {
+				if rawOut {
+					return &UsageError{Msg: "--raw applies to `gridraw grid NAME`; the registry has no condensed view"}
+				}
 				raw, err := api.Raw(cmd.Context(), "GET", "/-/registry")
 				if err != nil {
 					return err
@@ -131,7 +135,7 @@ func newGridCmd() *cobra.Command {
 			if noCache, _ := cmd.Flags().GetBool("no-cache"); !noCache {
 				cache.Put(args[0], raw)
 			}
-			if rawOut, _ := cmd.Flags().GetBool("raw"); rawOut {
+			if rawOut {
 				return writeInfo(cmd, raw, format)
 			}
 			body, err := renderView(gridView(desc), format)

@@ -128,7 +128,8 @@ func asHTTPError(err error, target **HTTPError) bool { return errors.As(err, tar
 // TestErrorBodyTruncationKeepsValidUTF8 pins that a long error message is cut
 // at a rune boundary: slicing bytes would leave half a character behind.
 func TestErrorBodyTruncationKeepsValidUTF8(t *testing.T) {
-	long := strings.Repeat("ы", 4000) // two bytes each, so the cap lands mid-rune
+	// Three bytes each, so the byte cap lands inside a rune rather than between two.
+	long := strings.Repeat("日", 4000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 		_, _ = io.WriteString(w, long)

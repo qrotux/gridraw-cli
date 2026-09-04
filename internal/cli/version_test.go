@@ -27,7 +27,7 @@ func TestVersionStringFallsBackToBuildInfo(t *testing.T) {
 	}
 	// Under `go test` the main module has no version and no vcs stamp, so the
 	// answer is the devel fallback; a released binary reports its module tag.
-	if !regexp.MustCompile(`^(devel|unknown|v[0-9]|\(devel\))`).MatchString(got) {
+	if !regexp.MustCompile(`^(devel|unknown|v[0-9])`).MatchString(got) {
 		t.Errorf("versionString() = %q, want a version or the devel fallback", got)
 	}
 	if strings.Contains(got, "(") && !strings.Contains(got, ")") {

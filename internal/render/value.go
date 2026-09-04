@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 )
 
 // Cell renders a row value for a text format. A nested value becomes compact
@@ -65,11 +66,27 @@ func sortedPairs(row map[string]any) []keyValue {
 // json.Marshal turns <, > and & into \u003c and friends, which would rewrite
 // the text of a cell the server sent verbatim.
 func compactJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	e := encoders.Get().(*escapeFreeEncoder)
+	defer encoders.Put(e)
+	e.buf.Reset()
+	if err := e.enc.Encode(v); err != nil {
 		return nil, err
 	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+	// The buffer is reused, so the caller gets its own copy.
+	out := bytes.TrimRight(e.buf.Bytes(), "\n")
+	return append([]byte(nil), out...), nil
 }
+
+// escapeFreeEncoder pairs an encoder with the buffer it writes into; a row can
+// hold many fields and a page many rows, so both are pooled.
+type escapeFreeEncoder struct {
+	buf *bytes.Buffer
+	enc *json.Encoder
+}
+
+var encoders = sync.Pool{New: func() any {
+	buf := &bytes.Buffer{}
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	return &escapeFreeEncoder{buf: buf, enc: enc}
+}}

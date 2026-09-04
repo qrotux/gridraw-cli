@@ -60,11 +60,11 @@ func (o object) MarshalJSON() ([]byte, error) {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		key, err := json.Marshal(f.key)
+		key, err := compactJSON(f.key)
 		if err != nil {
 			return nil, err
 		}
-		val, err := json.Marshal(f.value)
+		val, err := compactJSON(f.value)
 		if err != nil {
 			return nil, err
 		}
@@ -74,6 +74,18 @@ func (o object) MarshalJSON() ([]byte, error) {
 	}
 	buf.WriteByte('}')
 	return buf.Bytes(), nil
+}
+
+// compactJSON encodes a value on one line without HTML escaping, so a title or
+// a description carrying <, > or & reads as the server wrote it.
+func compactJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // MarshalYAML writes the object with its keys in order.
@@ -95,7 +107,7 @@ func (o object) MarshalYAML() (any, error) {
 type flow struct{ value any }
 
 // MarshalJSON renders the wrapped value; JSON has no block style to opt out of.
-func (f flow) MarshalJSON() ([]byte, error) { return json.Marshal(f.value) }
+func (f flow) MarshalJSON() ([]byte, error) { return compactJSON(f.value) }
 
 // MarshalYAML renders the wrapped value in flow style.
 func (f flow) MarshalYAML() (any, error) {
@@ -123,7 +135,7 @@ func gridView(d *wire.Descriptor) object {
 		out = out.add("defaultSort", d.DefaultSort.Column+" "+d.DefaultSort.Dir)
 	}
 	if d.Search != nil && len(d.Search.Columns) > 0 {
-		out = out.add("search", flow{d.Search.Columns})
+		out = out.add("search", flow{searchKeys(d)})
 	}
 	out = out.add("skipTotal", d.SkipTotal)
 
@@ -131,7 +143,29 @@ func gridView(d *wire.Descriptor) object {
 	for i := range d.Columns {
 		columns = append(columns, columnView(&d.Columns[i]))
 	}
-	return out.add("columns", columns)
+	// A grid with no columns is odd but real; an absent key would read as a
+	// truncated view rather than an empty one.
+	return append(out, field{"columns", columns})
+}
+
+// searchKeys names the columns the quick search covers. The descriptor lists
+// their titles, which are localised and not what a query spells, so each is
+// resolved back to its column key; a title matching no column is kept as it
+// came rather than dropped.
+func searchKeys(d *wire.Descriptor) []string {
+	byTitle := make(map[string]string, len(d.Columns))
+	for _, c := range d.Columns {
+		byTitle[c.Title] = c.Key
+	}
+	out := make([]string, 0, len(d.Search.Columns))
+	for _, title := range d.Search.Columns {
+		if key, ok := byTitle[title]; ok {
+			out = append(out, key)
+			continue
+		}
+		out = append(out, title)
+	}
+	return out
 }
 
 func columnView(c *wire.Column) object {
@@ -170,11 +204,14 @@ func columnView(c *wire.Column) object {
 // renderView writes the condensed descriptor in the information format.
 func renderView(view object, format string) ([]byte, error) {
 	if format == "json" {
-		body, err := json.MarshalIndent(view, "", "  ")
-		if err != nil {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(view); err != nil {
 			return nil, fmt.Errorf("cannot render the descriptor: %w", err)
 		}
-		return append(body, '\n'), nil
+		return buf.Bytes(), nil
 	}
 	body, err := yaml.Marshal(view)
 	if err != nil {

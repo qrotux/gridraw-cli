@@ -317,9 +317,10 @@ even though the server returns it in every row.
 
 `order` takes a comma-separated list. A leading `-` means descending, and the
 long form works too, so `order "-rating"`, `order "rating desc"` and
-`order "rating desc,email"` are all valid. At most 16 columns; a column the
-descriptor does not mark sortable is a usage error. With no `order` clause the
-server applies the grid's own `defaultSort`.
+`order "rating desc,email"` are all valid — but not both at once: `-rating asc`
+gives the direction twice and is a usage error rather than a silent guess. At
+most 16 columns; a column the descriptor does not mark sortable is a usage
+error. With no `order` clause the server applies the grid's own `defaultSort`.
 
 `search` requires a grid that declares searchable columns; otherwise it is a
 usage error naming the grid.
@@ -559,7 +560,7 @@ page 3/3 · 8/8 rows
 | code | meaning |
 |---|---|
 | 0 | success |
-| 1 | a general or network failure |
+| 1 | a general or network failure, and any other non-2xx status (a 3xx the client did not follow) |
 | 2 | a usage error: an unparseable `where`, an unknown column or operator, bad arguments |
 | 3 | the configuration is missing or invalid |
 | 4 | the server answered 4xx |
@@ -623,13 +624,17 @@ GOOS=linux GOARCH=amd64 go build -trimpath -o dist/gridraw ./cmd/gridraw
 
 `.github/workflows/ci.yml` runs the gate on Linux and macOS and cross-builds
 darwin/arm64, darwin/amd64, linux/amd64, linux/arm64 and windows/amd64,
-uploading each as an artifact. The Windows binary is built but not tested: the
-suite makes POSIX assumptions about paths and the home directory that have
-never been checked on that platform.
+uploading each as an artifact. The Windows binary is built but not tested:
+two configuration tests assert that the file holding the credential has mode
+`0600`, which Windows cannot report — and the same limitation means that
+promise does not hold there. Artifacts arrive without the executable bit, since
+the upload action does not preserve it; `chmod +x gridraw` after unzipping.
 
-`.github/workflows/release.yml` runs on a `v*` tag: it stamps the tag into the
-binary, packages each target with the README and the licence — `.tar.gz`, or
-`.zip` for Windows — and attaches them to the GitHub release.
+`.github/workflows/release.yml` runs on a `v*` tag: it runs the gate, stamps
+the tag into each binary — failing the build if the stamp did not take —
+packages every target with the README and the licence (`.tar.gz`, or `.zip` for
+Windows), and then one job publishes them with a `SHA256SUMS` file to the
+GitHub release.
 
 ## License
 

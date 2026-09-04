@@ -107,7 +107,7 @@ func TestJSONWritersDoNotEscapeHTML(t *testing.T) {
 // TestWriterPropagatesAWriteError pins that a failing destination — a full disk,
 // a closed pipe — surfaces instead of being swallowed mid-stream.
 func TestWriterPropagatesAWriteError(t *testing.T) {
-	for _, format := range []Format{FormatJSON, FormatJSONA, FormatJSONL, FormatYAMLA, FormatCSV, FormatTSV} {
+	for _, format := range []Format{FormatJSON, FormatJSONA, FormatJSONL, FormatYAML, FormatYAMLA, FormatCSV, FormatTSV} {
 		w, err := New(failingWriter{}, format, Options{Columns: []string{"id"}})
 		if err != nil {
 			t.Fatal(err)

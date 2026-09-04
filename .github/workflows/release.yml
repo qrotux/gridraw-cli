@@ -5,10 +5,31 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  gate:
+    # A tag push does not match the CI workflow's branch trigger, so the gate
+    # runs here too: nothing is published from a commit that fails it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt-clean:"; echo "$unformatted"; exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+
+  build:
+    needs: gate
     strategy:
       fail-fast: false
       matrix:
@@ -33,8 +54,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          check-latest: true
-      - name: build
+      - name: build and package
         run: |
           name="gridraw-${GITHUB_REF_NAME}-${GOOS}-${GOARCH}"
           bin="gridraw"
@@ -47,10 +67,50 @@ jobs:
             -o "dist/$name/$bin" ./cmd/gridraw
           cp README.md LICENSE "dist/$name/"
           cd dist
-          if [ "$GOOS" = "windows" ]; then zip -qr "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
-      - uses: softprops/action-gh-release@v2
+          if [ "$GOOS" = "windows" ]; then
+            zip -qr "$name.zip" "$name"
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+      - name: check the stamp took
+        # -X against a wrong package path is a silent no-op, so the one leg that
+        # can run here proves the tag actually reached the binary.
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          got="$(./dist/gridraw-${GITHUB_REF_NAME}-linux-amd64/gridraw --version)"
+          echo "$got"
+          case "$got" in
+            *"$GITHUB_REF_NAME") ;;
+            *) echo "the version stamp did not take"; exit 1 ;;
+          esac
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: package-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
             dist/*.tar.gz
             dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    # One job owns the release, so five matrix legs cannot race to create it.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: package-*
+          merge-multiple: true
+      - name: checksums
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
+          cat SHA256SUMS
+      # Pinned by commit: this third-party action runs with contents: write, so
+      # a moved tag must not be able to change what runs here. (v3.0.3)
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
+        with:
+          files: dist/*
           fail_on_unmatched_files: true

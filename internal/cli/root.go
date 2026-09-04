@@ -22,6 +22,12 @@ func newRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// Cobra returns a bare error for an unknown or malformed flag; classifying
+	// it here is what makes every command exit 2 on a typo, not just `from`,
+	// which parses its own flags.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &UsageError{Msg: err.Error()}
+	})
 	root.PersistentFlags().String("config", "", "configuration profile to use")
 	root.PersistentFlags().String("config-file", "", "read this configuration file only")
 	root.AddCommand(newConfigCmd(), newListCmd(), newGridCmd(), newFromCmd(), newWhereTopic())

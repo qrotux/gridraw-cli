@@ -29,7 +29,11 @@ func Order(src string, d *wire.Descriptor) ([]wire.SortSpec, error) {
 		}
 		if fields := strings.Fields(term); len(fields) == 2 {
 			if dir == "desc" {
-				return nil, &Error{Pos: -1, Msg: fmt.Sprintf("the sort term %q gives the direction twice", strings.TrimSpace(part))}
+				return nil, &Error{
+					Pos:  -1,
+					Msg:  fmt.Sprintf("the sort term %q gives the direction twice", strings.TrimSpace(part)),
+					Hint: fmt.Sprintf("write %q or %q", "-"+fields[0], fields[0]+" "+strings.ToLower(fields[1])),
+				}
 			}
 			term = fields[0]
 			switch strings.ToLower(fields[1]) {

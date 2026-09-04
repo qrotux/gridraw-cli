@@ -4,23 +4,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qrotux/gridraw-cli/internal/wire"
+	"github.com/qrotux/gridraw-cli/internal/wql"
 )
 
-// TestWhereHelpNamesEveryOperator pins the help topic against the wire
-// operators: an operator added to the protocol without a line here would ship
-// undocumented.
-func TestWhereHelpNamesEveryOperator(t *testing.T) {
-	ops := []wire.Op{
-		wire.OpEq, wire.OpNeq, wire.OpContains, wire.OpNotContains, wire.OpStarts,
-		wire.OpEnds, wire.OpGt, wire.OpGte, wire.OpLt, wire.OpLte, wire.OpBetween,
-		wire.OpNotBetween, wire.OpIn, wire.OpNotIn, wire.OpIsNull, wire.OpIsNotNull,
-		wire.OpContainsAny, wire.OpContainsAll, wire.OpContainsOnly,
-		wire.OpNotContainsAny, wire.OpIsEmpty, wire.OpIsNotEmpty,
+// operatorSection is the part of the help topic that lists the operators; the
+// rest is prose in which a short word like "in" occurs by accident.
+func operatorSection(t *testing.T) string {
+	t.Helper()
+	start := strings.Index(whereHelp, "OPERATORS")
+	end := strings.Index(whereHelp, "LITERALS")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("the help topic has lost its OPERATORS section")
 	}
-	for _, op := range ops {
-		if !strings.Contains(whereHelp, string(op)) {
-			t.Errorf("the where help topic never mentions the operator %s", op)
+	return whereHelp[start:end]
+}
+
+// TestWhereHelpListsEverySpelling pins the topic against the language itself:
+// an operator the parser learns without a line here would ship undocumented.
+func TestWhereHelpListsEverySpelling(t *testing.T) {
+	section := operatorSection(t)
+	for op, written := range wql.Spellings() {
+		// A spelling is documented only as a table row, which starts a line.
+		if !strings.Contains(section, "\n  "+written) {
+			t.Errorf("the operator table has no row for %s (%q)", op, written)
 		}
 	}
 }

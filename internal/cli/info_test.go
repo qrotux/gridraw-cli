@@ -214,3 +214,13 @@ func TestInfoGridPrintsTheQueryView(t *testing.T) {
 		t.Errorf("the query view lost what a query needs:\n%s", view)
 	}
 }
+
+func TestInfoRawWithoutAGridNameIsAUsageError(t *testing.T) {
+	_, _, err := runInfo(t, newGridCmd(), `[]`, "--raw")
+	if err == nil || ExitCode(err) != 2 {
+		t.Fatalf("error = %v (exit %d), want a usage error", err, ExitCode(err))
+	}
+	if !strings.Contains(err.Error(), "--raw") {
+		t.Errorf("error = %q, want it to name the flag", err)
+	}
+}

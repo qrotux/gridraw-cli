@@ -116,3 +116,13 @@ func ValueHint(colType string) string {
 	}
 	return ""
 }
+
+// Spellings returns every operator with the form it is written in, for callers
+// that document or list the language.
+func Spellings() map[wire.Op]string {
+	out := make(map[wire.Op]string, len(spellings))
+	for op, written := range spellings {
+		out[op] = written
+	}
+	return out
+}

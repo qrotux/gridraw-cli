@@ -8,12 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
-    # The gate CLAUDE.md names, on the two platforms the tests are known to
-    # pass on. Windows is covered by the build job below: the test suite makes
-    # POSIX assumptions about paths and the home directory that have never been
-    # checked there.
+    # The gate CLAUDE.md names, on the two platforms the tests pass on. Windows
+    # is covered by the build job below: two config tests assert a 0600 file
+    # mode, which Windows cannot report.
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +27,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          check-latest: true
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
@@ -35,6 +37,10 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./...
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
 
   build:
     needs: gate
@@ -59,18 +65,19 @@ jobs:
       GOARCH: ${{ matrix.goarch }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The version line falls back to the commit the build came from.
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          check-latest: true
       - name: build
         run: |
           out="gridraw"
           if [ "$GOOS" = "windows" ]; then out="gridraw.exe"; fi
           go build -trimpath -o "dist/$out" ./cmd/gridraw
+      - name: report its version
+        # Only the leg that matches the runner can be executed; it is enough to
+        # prove the binary starts and knows what it is.
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: ./dist/gridraw --version
       - uses: actions/upload-artifact@v4
         with:
           name: gridraw-${{ matrix.goos }}-${{ matrix.goarch }}

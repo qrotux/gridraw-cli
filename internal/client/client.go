@@ -12,19 +12,21 @@ import (
 	"time"
 )
 
-// maxErrorBody caps how much of a non-JSON error body reaches the user.
-const maxErrorBody = 2048
+const (
+	// maxErrorBody caps how much of a non-JSON error body reaches the user.
+	maxErrorBody = 2048
+	// maxErrorRead caps how much of it is read at all.
+	maxErrorRead = 64 << 10
+)
 
 // HTTPError is a non-2xx response.
 type HTTPError struct {
-	// Status is the HTTP status code the server answered with.
 	Status int
 	// Msg is the server's own message, or the response body when it carried no
 	// {"error": …} envelope.
 	Msg string
 }
 
-// Error renders the status and the server's message.
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("server returned %d: %s", e.Status, e.Msg)
 }
@@ -74,9 +76,10 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		// A failing proxy can answer with megabytes of HTML; only the part that
-		// reaches the user is worth reading.
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
+		// A failing proxy can answer with megabytes of HTML, so the body is
+		// bounded; the window is well above maxErrorBody because a long but
+		// legitimate {"error": …} envelope still has to parse.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorRead))
 		if err != nil {
 			return nil, err
 		}

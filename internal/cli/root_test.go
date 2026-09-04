@@ -55,3 +55,37 @@ func TestExitCodeForANonClientNonServerStatus(t *testing.T) {
 		t.Errorf("ExitCode(404) = %d, want 4", got)
 	}
 }
+
+// TestRootReportsItsVersion pins the flag itself: versionString has unit tests,
+// but nothing else proves the root command publishes it.
+func TestRootReportsItsVersion(t *testing.T) {
+	old := version
+	t.Cleanup(func() { version = old })
+	version = "v9.9.9"
+
+	var stdout bytes.Buffer
+	root := newRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stdout)
+	root.SetArgs([]string{"--version"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("--version: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "v9.9.9") {
+		t.Errorf("--version printed %q, want the stamped version", got)
+	}
+}
+
+// TestRootRejectsAnUnknownFlagAsAUsageError pins the exit code a typo gets on a
+// command that does not parse its own flags.
+func TestRootRejectsAnUnknownFlagAsAUsageError(t *testing.T) {
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"list", "--nosuch"})
+	err := root.ExecuteContext(context.Background())
+	if err == nil || ExitCode(err) != 2 {
+		t.Fatalf("error = %v (exit %d), want a usage error", err, ExitCode(err))
+	}
+}

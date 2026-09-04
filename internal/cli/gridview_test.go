@@ -51,7 +51,7 @@ description: Application users
 idColumn: id
 pageSize: 25
 defaultSort: createdAt desc
-search: [Email]
+search: [email]
 columns:
     - key: email
       title: Email
@@ -138,5 +138,49 @@ func TestGridViewSkipTotal(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "skipTotal: true") {
 		t.Error("a grid that sends no total must say so; it changes how a client pages")
+	}
+}
+
+// TestGridViewSearchResolvesTitlesToKeys pins that the search list names
+// columns the way a query does: the descriptor sends localised titles, which
+// are useless to whoever writes the filter.
+func TestGridViewSearchResolvesTitlesToKeys(t *testing.T) {
+	d := viewFixture()
+	d.Search = &wire.Search{Columns: []string{"Email", "A column that no longer exists"}}
+	body, err := renderView(gridView(d), "yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "search: [email, A column that no longer exists]") {
+		t.Errorf("search list = %s, want the known title resolved and the unknown one kept", body)
+	}
+}
+
+func TestGridViewKeepsAnEmptyColumnList(t *testing.T) {
+	d := viewFixture()
+	d.Columns = nil
+	body, err := renderView(gridView(d), "yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "columns: []") {
+		t.Errorf("view = %s, want an explicit empty column list", body)
+	}
+}
+
+// TestGridViewDoesNotEscapeHTML pins that the view reads as the server wrote
+// it: encoding/json escapes <, > and & by default, so the same title would
+// differ between the view and what --raw prints.
+func TestGridViewDoesNotEscapeHTML(t *testing.T) {
+	d := viewFixture()
+	d.Columns[0].Title = "A&B <c>"
+	for _, format := range []string{"json", "yaml"} {
+		body, err := renderView(gridView(d), format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), "A&B <c>") {
+			t.Errorf("%s = %s, want the title unescaped", format, body)
+		}
 	}
 }
