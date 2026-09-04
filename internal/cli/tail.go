@@ -24,10 +24,9 @@ var tailKeywords = []string{"columns", "where", "order", "search", "limit", "pag
 
 // splitArgs separates the keyword tail from the flags, which is why `from`
 // turns cobra's own flag parsing off: pflag reads `order -id` as an unknown
-// shorthand cluster and refuses the documented form of a descending sort. A
-// keyword takes the word after it whatever it looks like; everything else is
-// routed by the flag set, so a flag that needs a value keeps it. `--` ends the
-// split the way pflag ends parsing: the rest is tail.
+// shorthand cluster and so refuses the documented descending sort. A keyword
+// takes the next word whatever it looks like, everything else is routed by the
+// flag set, and `--` ends the split as it ends pflag's parsing.
 func splitArgs(args []string, flags *pflag.FlagSet) (tailArgs, flagArgs []string) {
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
@@ -58,14 +57,22 @@ func needsValue(arg string, flags *pflag.FlagSet) bool {
 	if strings.Contains(arg, "=") {
 		return false
 	}
-	var f *pflag.Flag
 	if strings.HasPrefix(arg, "--") {
-		f = flags.Lookup(arg[2:])
-	} else if len(arg) == 2 {
-		// A longer cluster carries its value attached, as in -ocsv.
-		f = flags.ShorthandLookup(arg[1:])
+		f := flags.Lookup(arg[2:])
+		return f != nil && f.NoOptDefVal == ""
 	}
-	return f != nil && f.NoOptDefVal == ""
+	// pflag hands the first value-taking shorthand of a cluster the rest of
+	// that cluster, so only one in last place reads the following word.
+	for i := 1; i < len(arg); i++ {
+		f := flags.ShorthandLookup(arg[i : i+1])
+		if f == nil {
+			return false
+		}
+		if f.NoOptDefVal == "" {
+			return i == len(arg)-1
+		}
+	}
+	return false
 }
 
 // parseTail reads the positional keyword arguments left after the flags.

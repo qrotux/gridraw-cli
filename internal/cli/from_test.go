@@ -395,3 +395,25 @@ func TestBuildRequestAllDefaultsToTheLargestPage(t *testing.T) {
 		t.Errorf("page size = %d, want the limit clause to win", req.PageSize)
 	}
 }
+
+// TestFromRoutesTheInheritedFlags pins that splitArgs sees --config and
+// --config-file, which live on the root command: from merges them into its own
+// flag set before splitting. Without the merge they would look like unknown
+// flags and their values would land in the keyword tail.
+func TestFromRoutesTheInheritedFlags(t *testing.T) {
+	rows := `{"rows":[{"id":"a","email":"eve@example.com"}],"total":1,"hasPrev":false,"hasNext":false}`
+	for _, args := range [][]string{
+		{"users", "--config", "p", "limit", "1", "-o", "csv"},
+		{"users", "--config=p", "limit", "1", "-o", "csv"},
+		{"users", "--config-file", config.LocalFileName, "limit", "1", "-o", "csv"},
+		{"users", "--config-file=" + config.LocalFileName, "limit", "1", "-o", "csv"},
+	} {
+		stdout, _, err := runFrom(t, stubDescriptor, rows, args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if stdout != "email\r\neve@example.com\r\n" {
+			t.Errorf("%v: stdout = %q", args, stdout)
+		}
+	}
+}

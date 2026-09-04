@@ -55,7 +55,7 @@ func TestSplitArgs(t *testing.T) {
 	flags := pflag.NewFlagSet("from", pflag.ContinueOnError)
 	flags.StringP("output", "o", "", "")
 	flags.String("null-val", "", "")
-	flags.Bool("all", false, "")
+	flags.BoolP("all", "a", false, "") // a boolean shorthand, so -ao csv is a cluster
 	for _, tc := range []struct {
 		args       []string
 		tail, flag string
@@ -66,6 +66,7 @@ func TestSplitArgs(t *testing.T) {
 		{[]string{"users", "--null-val=-", "where", "a = 1"}, "users where a = 1", "--null-val=-"},
 		{[]string{"users", "--", "order", "-id"}, "users order -id", ""},
 		{[]string{"users", "--nosuch", "limit", "5"}, "users limit 5", "--nosuch"},
+		{[]string{"users", "-ao", "csv", "limit", "5"}, "users limit 5", "-ao csv"},
 	} {
 		tailArgs, flagArgs := splitArgs(tc.args, flags)
 		if got := strings.Join(tailArgs, " "); got != tc.tail {

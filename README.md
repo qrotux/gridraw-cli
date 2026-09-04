@@ -197,8 +197,10 @@ gridraw from GRID [columns "a,b"] [where "…"] [order "a,-b"] [search "…"] [l
 ```
 
 The keywords are positional, may come in any order, and each may appear at most
-once. A repeated or unknown word is a usage error. Flags may be mixed in
-anywhere.
+once. A repeated or unknown word is a usage error. Flags may sit before, after
+or between the clauses, but never between a keyword and its value: a keyword
+always takes the next word, so `order --quiet "-id"` would read `--quiet` as
+the sort.
 
 | keyword | effect |
 |---|---|
