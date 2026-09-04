@@ -77,7 +77,7 @@ func LoadFileOrNew(path string) (*Config, error) {
 		return nil, err
 	}
 	if !found {
-		return &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}}, nil
+		return &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}, unexpanded: map[string]Profile{}}, nil
 	}
 	cfg.Sources = []string{path}
 	cfg.Origin = originOf(cfg, path)
@@ -87,7 +87,7 @@ func LoadFileOrNew(path string) (*Config, error) {
 // Merge reads both files and lets the local one win profile by profile. A
 // missing file contributes nothing; both missing yields an empty Config.
 func Merge(userPath, localPath string) (*Config, error) {
-	out := &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}}
+	out := &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}, unexpanded: map[string]Profile{}}
 	for _, path := range []string{userPath, localPath} {
 		if path == "" {
 			continue
@@ -103,6 +103,10 @@ func Merge(userPath, localPath string) (*Config, error) {
 		for name, p := range cfg.Profiles {
 			out.Profiles[name] = p // a same-named profile is replaced whole
 			out.Origin[name] = path
+			delete(out.unexpanded, name)
+			if raw, ok := cfg.unexpanded[name]; ok {
+				out.unexpanded[name] = raw
+			}
 		}
 		if cfg.Current != "" {
 			out.Current = cfg.Current
@@ -130,6 +134,10 @@ func readFile(path string) (*Config, bool, error) {
 	if err != nil {
 		return nil, false, &Error{Msg: "cannot read " + path, Err: err}
 	}
+	var unexpanded Config
+	if err := yaml.Unmarshal(raw, &unexpanded); err != nil {
+		return nil, false, &Error{Msg: "cannot parse " + path, Err: err}
+	}
 	expanded, err := expand(string(raw), path)
 	if err != nil {
 		return nil, false, err
@@ -141,6 +149,7 @@ func readFile(path string) (*Config, bool, error) {
 	if cfg.Profiles == nil {
 		cfg.Profiles = map[string]Profile{}
 	}
+	cfg.unexpanded = unexpanded.Profiles
 	return &cfg, true, nil
 }
 

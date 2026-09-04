@@ -127,7 +127,7 @@ func newConfigCmd() *cobra.Command {
 			if err := profile.Validate(name); err != nil {
 				return err
 			}
-			cfg.Profiles[name] = profile
+			cfg.SetProfile(name, profile)
 			if cfg.Current == "" {
 				cfg.Current = name
 			}

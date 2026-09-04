@@ -6,9 +6,9 @@ import "fmt"
 // Profile is one named configuration.
 type Profile struct {
 	Host              string `yaml:"host"`
-	Header            string `yaml:"header"`
-	DefaultInfoOutput string `yaml:"defaultInfoOutput"`
-	DefaultDataOutput string `yaml:"defaultDataOutput"`
+	Header            string `yaml:"header,omitempty"`
+	DefaultInfoOutput string `yaml:"defaultInfoOutput,omitempty"`
+	DefaultDataOutput string `yaml:"defaultDataOutput,omitempty"`
 }
 
 // Config is the file format: named profiles plus the selected one.
@@ -21,6 +21,34 @@ type Config struct {
 
 	// Origin maps each profile name to the file the merge took it from.
 	Origin map[string]string `yaml:"-"`
+
+	// unexpanded holds each profile as its file spells it, before ${VAR}
+	// substitution. Save writes these, so a rewrite never replaces a
+	// reference with the credential it resolved to.
+	unexpanded map[string]Profile
+}
+
+// SetProfile stores a profile under name, dropping the unexpanded form Save
+// would otherwise have written for it.
+func (c *Config) SetProfile(name string, p Profile) {
+	if c.Profiles == nil {
+		c.Profiles = map[string]Profile{}
+	}
+	c.Profiles[name] = p
+	delete(c.unexpanded, name)
+}
+
+// forFile is the config as it goes back to disk: every profile still holding
+// an unexpanded form is written in that form.
+func (c *Config) forFile() *Config {
+	out := &Config{Current: c.Current, Profiles: make(map[string]Profile, len(c.Profiles))}
+	for name, p := range c.Profiles {
+		if raw, ok := c.unexpanded[name]; ok {
+			p = raw
+		}
+		out.Profiles[name] = p
+	}
+	return out
 }
 
 // Error is a configuration problem; the CLI maps it to exit code 3.

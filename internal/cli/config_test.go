@@ -10,27 +10,38 @@ import (
 	"github.com/qrotux/gridraw-cli/internal/config"
 )
 
-// runConfig runs `gridraw config` in an empty working directory with its own
-// user config path, and returns what it wrote to stderr.
-func runConfig(t *testing.T, stdin string, args ...string) (string, error) {
+// runConfig runs the config command tree in an empty working directory with
+// its own user config path, and returns stdout and stderr separately: the
+// questions and the confirmations belong on stderr, the listings on stdout.
+func runConfig(t *testing.T, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	return runConfigHere(t, stdin, args...)
+}
+
+// runConfigHere is runConfig without the fresh directory, for a test that has
+// written a configuration file first.
+func runConfigHere(t *testing.T, stdin string, args ...string) (string, string, error) {
+	t.Helper()
 	cmd := newConfigCmd()
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.SetIn(strings.NewReader(stdin))
-	cmd.SetOut(&stderr)
+	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	cmd.SetArgs(args)
 	err := cmd.Execute()
-	return stderr.String(), err
+	return stdout.String(), stderr.String(), err
 }
 
 func TestConfigWithHostAndAuthAsksNothing(t *testing.T) {
-	stderr, err := runConfig(t, "", "--host=http://h/api/grids", "--bearer-token=t")
+	stdout, stderr, err := runConfig(t, "", "--host=http://h/api/grids", "--bearer-token=t")
 	if err != nil {
 		t.Fatalf("config: %v", err)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing: the confirmation belongs on stderr", stdout)
 	}
 	// A question is printed without a trailing newline, so any question would
 	// show up before the confirmation on the first line.
@@ -61,31 +72,29 @@ func TestConfigEditKeepsTheStoredValues(t *testing.T) {
 	if err := os.WriteFile(config.LocalFileName, []byte(stored), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := newConfigCmd()
-	var stderr bytes.Buffer
 	// Every answer is an empty line: the stored profile must survive intact.
-	cmd.SetIn(strings.NewReader(strings.Repeat("\n", 8)))
-	cmd.SetOut(&stderr)
-	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"--name=p"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("config: %v\n%s", err, stderr.String())
-	}
-	cfg, err := config.LoadFile(config.LocalFileName)
+	stdout, stderr, err := runConfigHere(t, strings.Repeat("\n", 8), "--name=p")
 	if err != nil {
-		t.Fatalf("load: %v", err)
+		t.Fatalf("config: %v\n%s", err, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing: the questions belong on stderr", stdout)
+	}
+	cfg, err2 := config.LoadFile(config.LocalFileName)
+	if err2 != nil {
+		t.Fatalf("load: %v", err2)
 	}
 	want := config.Profile{Host: "http://kept/api/grids", Header: "Basic dXNlcjpwYXNz", DefaultInfoOutput: "json", DefaultDataOutput: "tsv"}
 	if cfg.Profiles["p"] != want {
 		t.Errorf("profile = %+v, want %+v", cfg.Profiles["p"], want)
 	}
-	if strings.Contains(stderr.String(), "dXNlcjpwYXNz") {
-		t.Errorf("the credential was printed in full: %q", stderr.String())
+	if strings.Contains(stderr, "dXNlcjpwYXNz") {
+		t.Errorf("the credential was printed in full: %q", stderr)
 	}
 }
 
 func TestConfigWithoutFlagsOrInputIsAUsageError(t *testing.T) {
-	_, err := runConfig(t, "")
+	_, _, err := runConfig(t, "")
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -101,16 +110,60 @@ func TestConfigListNamesTheSourceFile(t *testing.T) {
 	if err := os.WriteFile(config.LocalFileName, []byte("current: p\nconfigs:\n  p:\n    host: http://h/api/grids\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := newConfigCmd()
-	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
-	cmd.SetErr(&stdout)
-	cmd.SetArgs([]string{"list"})
-	if err := cmd.Execute(); err != nil {
+	stdout, stderr, err := runConfigHere(t, "", "list")
+	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	want := filepath.Join(dir, config.LocalFileName)
-	if !strings.Contains(stdout.String(), want) {
-		t.Errorf("list = %q, want it to name %s", stdout.String(), want)
+	if !strings.Contains(stdout, want) {
+		t.Errorf("list = %q, want it to name %s", stdout, want)
+	}
+	if stderr != "" {
+		t.Errorf("stderr = %q, want nothing: the listing is data", stderr)
+	}
+}
+
+// config use rewrites current in the nearest file that was read and leaves the
+// profiles alone; the confirmation is stderr, not data.
+func TestConfigUseSelectsTheProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	stored := "current: a\nconfigs:\n  a:\n    host: http://a/g\n  b:\n    host: http://b/g\n"
+	if err := os.WriteFile(config.LocalFileName, []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := runConfigHere(t, "", "use", "b")
+	if err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	if stdout != "" {
+		t.Errorf("stdout = %q, want nothing: the confirmation belongs on stderr", stdout)
+	}
+	if !strings.Contains(stderr, `"b"`) {
+		t.Errorf("stderr = %q, want it to name the selected profile", stderr)
+	}
+	cfg, err := config.LoadFile(config.LocalFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Current != "b" || len(cfg.Profiles) != 2 || cfg.Profiles["a"].Host != "http://a/g" {
+		t.Errorf("config = %+v, want current b and both profiles intact", cfg)
+	}
+}
+
+func TestConfigUseRejectsAnUnknownProfile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	if err := os.WriteFile(config.LocalFileName, []byte("current: a\nconfigs:\n  a:\n    host: http://a/g\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := runConfigHere(t, "", "use", "nope")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if got := ExitCode(err); got != 3 {
+		t.Errorf("ExitCode = %d, want 3: %v", got, err)
 	}
 }
