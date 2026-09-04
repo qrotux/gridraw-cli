@@ -1,6 +1,9 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/qrotux/gridraw-cli/internal/config"
+	"github.com/spf13/cobra"
+)
 
 // Execute runs the root command and returns the error for main to classify.
 func Execute() error {
@@ -12,5 +15,26 @@ func Execute() error {
 	}
 	root.PersistentFlags().String("config", "", "configuration profile to use")
 	root.PersistentFlags().String("config-file", "", "read this configuration file only")
+	root.AddCommand(newConfigCmd())
 	return root.Execute()
+}
+
+// loadConfig honours --config-file, falling back to discovery.
+func loadConfig(cmd *cobra.Command) (*config.Config, error) {
+	path, _ := cmd.Flags().GetString("config-file")
+	if path != "" {
+		return config.LoadFile(path)
+	}
+	return config.Load()
+}
+
+// profileFor returns the profile selected by --config, or the current one.
+func profileFor(cmd *cobra.Command) (config.Profile, error) {
+	cfg, err := loadConfig(cmd)
+	if err != nil {
+		return config.Profile{}, err
+	}
+	name, _ := cmd.Flags().GetString("config")
+	p, _, err := cfg.Profile(name)
+	return p, err
 }

@@ -63,6 +63,19 @@ func LoadFile(path string) (*Config, error) {
 	return cfg, validate(cfg)
 }
 
+// LoadFileOrNew reads path, or returns an empty Config when it does not exist.
+func LoadFileOrNew(path string) (*Config, error) {
+	cfg, found, err := readFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return &Config{Profiles: map[string]Profile{}}, nil
+	}
+	cfg.Sources = []string{path}
+	return cfg, validate(cfg)
+}
+
 // Merge reads both files and lets the local one win profile by profile. A
 // missing file contributes nothing; both missing yields an empty Config.
 func Merge(userPath, localPath string) (*Config, error) {
