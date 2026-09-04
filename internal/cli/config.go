@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/qrotux/gridraw-cli/internal/config"
@@ -110,7 +112,7 @@ func newConfigCmd() *cobra.Command {
 			}
 
 			if !silent && !cmd.Flags().Changed("global") {
-				where, err := p.Choose(fmt.Sprintf("Write to %s or %s", localPath, userPath), []string{"local", "global"}, "local")
+				where, err := p.Choose(fmt.Sprintf("Write to %s or %s", shortPath(localPath), shortPath(userPath)), []string{"local", "global"}, "local")
 				if err != nil {
 					return err
 				}
@@ -149,6 +151,21 @@ func newConfigCmd() *cobra.Command {
 
 	cmd.AddCommand(newConfigListCmd(), newConfigUseCmd(), newConfigShowCmd(), newConfigPathCmd())
 	return cmd
+}
+
+// shortPath abbreviates a path for a prompt: the working directory becomes ".",
+// the home directory "~". Only the display changes; the path written to is the
+// absolute one.
+func shortPath(path string) string {
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "." + string(filepath.Separator) + rel
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home+string(filepath.Separator)) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 // flagsComplete reports whether the flags carry a whole profile: a host and an

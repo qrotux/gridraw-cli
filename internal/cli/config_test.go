@@ -220,3 +220,23 @@ func TestConfigEditKeepsEnvReferences(t *testing.T) {
 		t.Errorf("the change was not written:\n%s", body)
 	}
 }
+
+func TestShortPath(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ in, want string }{
+		{filepath.Join(wd, ".gridraw.yaml"), "./.gridraw.yaml"},
+		{filepath.Join(home, ".config", "gridraw", "config.yaml"), "~/.config/gridraw/config.yaml"},
+		{"/etc/gridraw.yaml", "/etc/gridraw.yaml"},
+	} {
+		if got := shortPath(tc.in); got != tc.want {
+			t.Errorf("shortPath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
