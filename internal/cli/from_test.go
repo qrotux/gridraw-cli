@@ -156,6 +156,14 @@ func runFrom(t *testing.T, desc, rows string, args ...string) (string, string, e
 		_, _ = io.WriteString(w, desc)
 	}))
 	t.Cleanup(srv.Close)
+	return runFromAgainst(t, srv, args...)
+}
+
+// runFromAgainst points the from command at srv through the only configuration
+// it can discover, and returns stdout and stderr separately: stdout must carry
+// data only.
+func runFromAgainst(t *testing.T, srv *httptest.Server, args ...string) (string, string, error) {
+	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
@@ -415,5 +423,39 @@ func TestFromRoutesTheInheritedFlags(t *testing.T) {
 		if stdout != "email\r\neve@example.com\r\n" {
 			t.Errorf("%v: stdout = %q", args, stdout)
 		}
+	}
+}
+
+// The hint is attached on the way out of the from command and printed by
+// PrintError, so this pins the whole path from a failed page to the report the
+// user reads.
+func TestFromAllAttachesTheResumeHint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasSuffix(r.URL.Path, "/rows") {
+			_, _ = io.WriteString(w, stubDescriptor)
+			return
+		}
+		var req wire.RowsRequest
+		decodeBody(t, r, &req)
+		if req.Page == 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, `{"error":"query failed"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"rows":[{"email":"eve@example.com"}],"hasPrev":false,"hasNext":true}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, _, err := runFromAgainst(t, srv, "users", "columns", "email", "--null-val", "it's", "-o", "csv", "--all")
+	if err == nil {
+		t.Fatal("want the page error")
+	}
+	var report bytes.Buffer
+	PrintError(&report, err)
+	want := "Error: page 2: server returned 500: query failed\n" +
+		`Resume with: gridraw from users columns email --null-val 'it'\''s' -o csv --all page 2 --no-header` + "\n"
+	if report.String() != want {
+		t.Errorf("report = %q, want %q", report.String(), want)
 	}
 }

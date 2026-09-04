@@ -51,7 +51,8 @@ func TestJSONToYAMLKeepsNumbers(t *testing.T) {
 // runInfo runs one information command against a stub server, in a working
 // directory holding the only configuration the command can discover. It
 // returns what the command printed to stdout and the path the server was
-// asked for.
+// asked for. An information command has nothing to say on stderr, and the
+// helper pins that: stdout must be exactly the data a redirect would capture.
 func runInfo(t *testing.T, cmd *cobra.Command, body string, args ...string) (string, string, error) {
 	t.Helper()
 	var path string
@@ -75,6 +76,11 @@ func runInfo(t *testing.T, cmd *cobra.Command, body string, args ...string) (str
 	cmd.SetErr(&stderr)
 	cmd.SetArgs(args)
 	err := cmd.ExecuteContext(context.Background())
+	// Only on the success path: a standalone command still lets cobra report
+	// a failure on stderr, which the root command silences.
+	if err == nil && stderr.Len() > 0 {
+		t.Errorf("stderr = %q, want nothing", stderr.String())
+	}
 	return stdout.String(), path, err
 }
 

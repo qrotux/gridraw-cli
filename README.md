@@ -87,6 +87,10 @@ $ gridraw list
 Error: /home/me/.config/gridraw/config.yaml references unset environment variable(s): GRIDRAW_TOKEN
 ```
 
+A `gridraw config` or `gridraw config use` that rewrites the file puts every
+reference back as it was written: a profile the command did not touch is
+restored verbatim, and the value the reference resolved to never reaches disk.
+
 Files are written with mode `0600`.
 
 ### Which files are read
@@ -200,7 +204,9 @@ The keywords are positional, may come in any order, and each may appear at most
 once. A repeated or unknown word is a usage error. Flags may sit before, after
 or between the clauses, but never between a keyword and its value: a keyword
 always takes the next word, so `order --quiet "-id"` would read `--quiet` as
-the sort.
+the sort. A `--` ends the split: everything after it is read as tail words, so
+`gridraw from -- users` names a grid that would otherwise look like a flag, and
+`gridraw from users -- --quiet` is a usage error rather than a quiet run.
 
 | keyword | effect |
 |---|---|
@@ -311,7 +317,8 @@ it offers eq, neq, contains, notContains, starts, ends
 - a bare number — `4`, `-1.5` — is a JSON number;
 - `true` and `false` are JSON booleans;
 - `'…'`, `` `…` `` and `"…"` are strings; inside them `\'`, `` \` ``, `\"` and
-  `\\` are escapes;
+  `\\` are the only escapes, and a backslash before anything else is a usage
+  error — a Windows path is written `'C:\\new'`;
 - a parenthesised list is for `in`, `not in` and the `has …` operators, and may
   not be empty.
 
@@ -364,7 +371,7 @@ expanding parentheses multiplies the groups.
 | `json` | the response body as it came from the server |
 | `jsona` | a JSON array of the rows |
 | `jsonl` | one JSON object per line |
-| `yaml` | the whole response converted to YAML |
+| `yaml` | `total:` and `rows:` as YAML; `hasPrev` and `hasNext` are dropped |
 | `yamla` | a YAML array of the rows |
 | `csv` | a table of the rows |
 | `tsv` | the same, tab-separated |
@@ -384,8 +391,11 @@ $ gridraw from example limit 1 -o yamla --quiet
 The columns of `csv` and `tsv`, and their order, are the `columns` clause when
 there is one, otherwise the `defaultVisible` columns of the descriptor in
 declaration order. An array or a `json` column is written as compact JSON in
-its cell. Quoting follows RFC 4180, and `tsv` applies the same rules with a tab
-separator. `--no-header` drops the header row.
+its cell. `csv` quotes after RFC 4180: a field holding a comma, a quote or a
+line break is wrapped in quotes and its inner quotes doubled. `tsv` never
+quotes; it escapes instead, writing `\t`, `\n`, `\r` and `\\` for a tab, the two
+line breaks and a backslash. Both end a record with CRLF. `--no-header` drops
+the header row.
 
 A `null` is an empty cell, or the text given by `--null-val`. That flag applies
 to `csv`, `tsv`, `yaml` and `yamla`; in `json`, `jsona` and `jsonl` a null stays
@@ -425,9 +435,10 @@ stderr then names the page and prints a command that continues from it:
 
 ```
 Error: page 37: server returned 500: query failed
-Resume with: gridraw from users where "rating >= 4" -o csv --all page 37 --no-header >> out.csv
+Resume with: gridraw from users where 'rating >= 4' -o csv --all page 37 --no-header
 ```
 
+The hint carries no redirection — append it yourself with `>> rows.csv`.
 Appending to the same file works cleanly for `csv` and `tsv` (with
 `--no-header`), `jsonl` and `yamla`. For `json` and `jsona` a resumed run is a
 separate valid document, and the hint says so instead.
