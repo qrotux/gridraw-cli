@@ -167,3 +167,56 @@ func TestConfigUseRejectsAnUnknownProfile(t *testing.T) {
 		t.Errorf("ExitCode = %d, want 3: %v", got, err)
 	}
 }
+
+// An interactive edit that keeps the stored credential must keep the
+// reference, not the value it resolved to — for the profile being edited as
+// much as for the one the run never touches.
+func TestConfigEditKeepsEnvReferences(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "xdg"))
+	t.Setenv("GRIDRAW_TEST_TOKEN", "s3cret")
+	stored := "current: dev\nconfigs:\n" +
+		"  dev:\n    host: http://dev/g\n    header: \"Bearer ${GRIDRAW_TEST_TOKEN}\"\n" +
+		"  prod:\n    host: http://prod/g\n    header: \"Bearer ${GRIDRAW_TEST_TOKEN}\"\n"
+	if err := os.WriteFile(config.LocalFileName, []byte(stored), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Every answer is an empty line: the bearer question keeps what is stored.
+	_, stderr, err := runConfigHere(t, strings.Repeat("\n", 8), "--name=dev")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, stderr)
+	}
+	body, err := os.ReadFile(config.LocalFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "s3cret") {
+		t.Errorf("the credential was written to disk:\n%s", body)
+	}
+	if n := strings.Count(string(body), "${GRIDRAW_TEST_TOKEN}"); n != 2 {
+		t.Errorf("the file holds %d references, want 2:\n%s", n, body)
+	}
+	cfg, err := config.LoadFile(config.LocalFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profiles["dev"].Header != "Bearer s3cret" || cfg.Profiles["dev"].Host != "http://dev/g" {
+		t.Errorf("dev = %+v, want the stored profile intact", cfg.Profiles["dev"])
+	}
+
+	// Changing one field must not drag the kept credential onto disk with it.
+	if _, stderr, err := runConfigHere(t, strings.Repeat("\n", 8), "--name=dev", "--data-output=tsv"); err != nil {
+		t.Fatalf("config: %v\n%s", err, stderr)
+	}
+	body, err = os.ReadFile(config.LocalFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "s3cret") {
+		t.Errorf("changing one field wrote the credential:\n%s", body)
+	}
+	if !strings.Contains(string(body), "defaultDataOutput: tsv") {
+		t.Errorf("the change was not written:\n%s", body)
+	}
+}

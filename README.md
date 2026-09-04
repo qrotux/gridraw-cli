@@ -87,9 +87,12 @@ $ gridraw list
 Error: /home/me/.config/gridraw/config.yaml references unset environment variable(s): GRIDRAW_TOKEN
 ```
 
-A `gridraw config` or `gridraw config use` that rewrites the file puts every
-reference back as it was written: a profile the command did not touch is
-restored verbatim, and the value the reference resolved to never reaches disk.
+A `gridraw config` or `gridraw config use` that rewrites the file puts a
+reference back as it was written, as long as the profile still holds the value
+that reference resolved to. That covers every profile the command did not
+touch, and the fields of an edited profile whose stored value you keep — an
+empty answer to the token question stores `${GRIDRAW_TOKEN}` again, not the
+token. Answer with a literal instead and the literal is what is written.
 
 Files are written with mode `0600`.
 

@@ -127,7 +127,7 @@ func newConfigCmd() *cobra.Command {
 			if err := profile.Validate(name); err != nil {
 				return err
 			}
-			cfg.SetProfile(name, profile)
+			cfg.Profiles[name] = profile
 			if cfg.Current == "" {
 				cfg.Current = name
 			}
@@ -181,15 +181,17 @@ func promptError(err error) error {
 
 // existingProfile is what the questions default to: the profile in the file
 // about to be written, or the one the merged configuration shows, since the
-// user may be editing what `gridraw config show` printed.
+// user may be editing what `gridraw config show` printed. It is the unexpanded
+// form, so keeping a stored value stores the ${VAR} reference again and not
+// the credential it resolved to.
 func existingProfile(name, target string) config.Profile {
 	if cfg, err := config.LoadFileOrNew(target); err == nil {
-		if p, ok := cfg.Profiles[name]; ok {
+		if p, ok := cfg.Unexpanded(name); ok {
 			return p
 		}
 	}
 	if cfg, err := config.Load(); err == nil {
-		if p, ok := cfg.Profiles[name]; ok {
+		if p, ok := cfg.Unexpanded(name); ok {
 			return p
 		}
 	}

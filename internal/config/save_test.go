@@ -88,8 +88,8 @@ func TestSaveKeepsEnvReferencesUnexpanded(t *testing.T) {
 	}
 }
 
-// A profile the caller replaced is written as given: it no longer has an
-// unexpanded form to fall back on.
+// A profile the caller changed is written as given: it no longer expands to
+// what it was loaded with, so the file's form is not put back.
 func TestSaveWritesAReplacedProfileVerbatim(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	write(t, path, "current: a\nconfigs:\n  a:\n    host: ${GRIDRAW_TEST_HOST}\n")
@@ -98,7 +98,7 @@ func TestSaveWritesAReplacedProfileVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.SetProfile("a", Profile{Host: "http://new/g"})
+	cfg.Profiles["a"] = Profile{Host: "http://new/g"}
 	if err := Save(cfg, path); err != nil {
 		t.Fatal(err)
 	}

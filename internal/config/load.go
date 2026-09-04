@@ -173,6 +173,18 @@ func expand(src, path string) (string, error) {
 	return out, nil
 }
 
+// expandLenient substitutes what the environment defines and leaves the rest
+// as written. expand is the strict counterpart: it reports an unset variable,
+// because a silently empty Authorization header would fail much later.
+func expandLenient(s string) string {
+	return envRef.ReplaceAllStringFunc(s, func(ref string) string {
+		if val, ok := os.LookupEnv(envRef.FindStringSubmatch(ref)[1]); ok {
+			return val
+		}
+		return ref
+	})
+}
+
 func validate(cfg *Config) error {
 	for name, p := range cfg.Profiles {
 		if err := p.Validate(name); err != nil {

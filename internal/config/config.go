@@ -23,32 +23,48 @@ type Config struct {
 	Origin map[string]string `yaml:"-"`
 
 	// unexpanded holds each profile as its file spells it, before ${VAR}
-	// substitution. Save writes these, so a rewrite never replaces a
-	// reference with the credential it resolved to.
+	// substitution, so Save can put a reference back instead of the value it
+	// resolved to.
 	unexpanded map[string]Profile
 }
 
-// SetProfile stores a profile under name, dropping the unexpanded form Save
-// would otherwise have written for it.
-func (c *Config) SetProfile(name string, p Profile) {
-	if c.Profiles == nil {
-		c.Profiles = map[string]Profile{}
+// Unexpanded returns the named profile in the form its file spells it, ${VAR}
+// references included. It is what an interactive edit must offer as the value
+// an empty answer keeps: accepting the offer then stores the reference again
+// rather than the credential behind it.
+func (c *Config) Unexpanded(name string) (Profile, bool) {
+	if p, ok := c.unexpanded[name]; ok {
+		return p, true
 	}
-	c.Profiles[name] = p
-	delete(c.unexpanded, name)
+	p, ok := c.Profiles[name]
+	return p, ok
 }
 
-// forFile is the config as it goes back to disk: every profile still holding
-// an unexpanded form is written in that form.
+// forFile is the config as it goes back to disk. A profile that still expands
+// to what it was loaded with is written in the form its file spelled it; one a
+// caller has changed no longer matches and is written as it stands. The
+// comparison is what makes the guarantee hold: assigning into Profiles is as
+// safe as any accessor would be.
 func (c *Config) forFile() *Config {
 	out := &Config{Current: c.Current, Profiles: make(map[string]Profile, len(c.Profiles))}
 	for name, p := range c.Profiles {
-		if raw, ok := c.unexpanded[name]; ok {
+		if raw, ok := c.unexpanded[name]; ok && expandProfile(raw) == p {
 			p = raw
 		}
 		out.Profiles[name] = p
 	}
 	return out
+}
+
+// expandProfile substitutes ${VAR} in every field, leaving an unset variable
+// as its reference: only forFile's comparison reads the result, and a miss
+// there just means the profile is written as it stands.
+func expandProfile(p Profile) Profile {
+	p.Host = expandLenient(p.Host)
+	p.Header = expandLenient(p.Header)
+	p.DefaultInfoOutput = expandLenient(p.DefaultInfoOutput)
+	p.DefaultDataOutput = expandLenient(p.DefaultDataOutput)
+	return p
 }
 
 // Error is a configuration problem; the CLI maps it to exit code 3.
