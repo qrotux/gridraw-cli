@@ -19,6 +19,7 @@ stderr, so a redirect produces exactly the data you asked for.
 ## Contents
 
 - [Install](#install)
+- [Version](#version)
 - [Configuration](#configuration)
 - [Listing grids: `list` and `grid`](#listing-grids-list-and-grid)
 - [Querying rows: `from`](#querying-rows-from)
@@ -28,6 +29,7 @@ stderr, so a redirect produces exactly the data you asked for.
 - [What goes to stderr](#what-goes-to-stderr)
 - [Exit codes](#exit-codes)
 - [The descriptor cache](#the-descriptor-cache)
+- [Development](#development)
 
 ## Install
 
@@ -604,6 +606,30 @@ with `--refresh`, and `gridraw grid NAME`, which always fetches.
 $ gridraw from example --refresh limit 1 -o csv --quiet
 email,role,rating,price,...
 ```
+
+## Development
+
+The gate, which CI runs on every push:
+
+```sh
+test -z "$(gofmt -l .)" && go vet ./... && go test ./...
+```
+
+Cross-compiling needs nothing but the Go toolchain — the binary is pure Go:
+
+```sh
+GOOS=linux GOARCH=amd64 go build -trimpath -o dist/gridraw ./cmd/gridraw
+```
+
+`.github/workflows/ci.yml` runs the gate on Linux and macOS and cross-builds
+darwin/arm64, darwin/amd64, linux/amd64, linux/arm64 and windows/amd64,
+uploading each as an artifact. The Windows binary is built but not tested: the
+suite makes POSIX assumptions about paths and the home directory that have
+never been checked on that platform.
+
+`.github/workflows/release.yml` runs on a `v*` tag: it stamps the tag into the
+binary, packages each target with the README and the licence — `.tar.gz`, or
+`.zip` for Windows — and attaches them to the GitHub release.
 
 ## License
 

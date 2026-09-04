@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: build
+        run: |
+          name="gridraw-${GITHUB_REF_NAME}-${GOOS}-${GOARCH}"
+          bin="gridraw"
+          if [ "$GOOS" = "windows" ]; then bin="gridraw.exe"; fi
+          mkdir -p "dist/$name"
+          # The tag is stamped in, so `gridraw --version` reports the release
+          # rather than the commit it was built from.
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/qrotux/gridraw-cli/internal/cli.version=${GITHUB_REF_NAME}" \
+            -o "dist/$name/$bin" ./cmd/gridraw
+          cp README.md LICENSE "dist/$name/"
+          cd dist
+          if [ "$GOOS" = "windows" ]; then zip -qr "$name.zip" "$name"; else tar czf "$name.tar.gz" "$name"; fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          fail_on_unmatched_files: true
