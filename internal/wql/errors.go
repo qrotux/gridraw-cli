@@ -2,7 +2,10 @@
 // clauses of `gridraw from`.
 package wql
 
-import "fmt"
+import (
+	"fmt"
+	"unicode/utf8"
+)
 
 // Error is a mistake in what the user typed. Pos is a byte offset into the
 // source string, or -1 when the error is about the whole clause.
@@ -19,17 +22,19 @@ func (e *Error) Error() string {
 		out = fmt.Sprintf("%s at position %d: %s", e.Msg, e.Pos, caret(e.Source, e.Pos))
 	}
 	if e.Hint != "" {
-		out += "; " + e.Hint
+		out += "\n" + e.Hint
 	}
 	return out
 }
 
-// caret quotes the source with a marker under the offending byte.
+// caret quotes the source with a marker under the offending rune. The marker
+// is padded by rune count, not by Pos, so a multi-byte rune earlier in the
+// source does not push it out of column.
 func caret(src string, pos int) string {
 	if pos > len(src) {
 		pos = len(src)
 	}
-	return fmt.Sprintf("%s\n%*s^", src, pos, "")
+	return fmt.Sprintf("%s\n%*s^", src, utf8.RuneCountInString(src[:pos]), "")
 }
 
 func errAt(src string, pos int, format string, args ...any) *Error {

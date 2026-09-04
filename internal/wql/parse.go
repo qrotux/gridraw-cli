@@ -2,6 +2,7 @@ package wql
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/qrotux/gridraw-cli/internal/wire"
 )
@@ -199,7 +200,10 @@ func (p *parser) matchOperator() (opSpec, error) {
 	return opSpec{}, errAt(p.src, t.pos, "expected an operator, got %q", t.text)
 }
 
-func isSymbolWord(w string) bool { return !isIdentStart(w[0]) }
+func isSymbolWord(w string) bool {
+	r, _ := utf8.DecodeRuneInString(w)
+	return !isIdentStart(r)
+}
 
 func (p *parser) parseValue() (any, error) {
 	t := p.peek()
@@ -221,7 +225,7 @@ func (p *parser) parseList() ([]any, error) {
 	if !p.atSymbol("(") {
 		return nil, errAt(p.src, p.peek().pos, "expected `(` to start a list")
 	}
-	open := p.advance().pos
+	p.advance()
 	var vals []any
 	for {
 		v, err := p.parseValue()
@@ -239,8 +243,5 @@ func (p *parser) parseList() ([]any, error) {
 		return nil, errAt(p.src, p.peek().pos, "expected `,` or `)`")
 	}
 	p.advance()
-	if len(vals) == 0 {
-		return nil, errAt(p.src, open, "the list is empty")
-	}
 	return vals, nil
 }

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/qrotux/gridraw-cli/internal/wire"
 )
@@ -75,6 +76,9 @@ func TestParseOperators(t *testing.T) {
 		{"a = \"x\"", wire.OpEq, []any{"x"}},
 		{"a = 'it\\'s'", wire.OpEq, []any{"it's"}},
 		{"a = -1.5", wire.OpEq, []any{json.Number("-1.5")}},
+		{"\u044e = 1", wire.OpEq, []any{json.Number("1")}},
+		{"na\u00efve_\u0441\u0442\u043e\u043b\u04311 = 1", wire.OpEq, []any{json.Number("1")}},
+		{"a = '\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435'", wire.OpEq, []any{"\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435"}},
 	}
 	for _, tc := range tests {
 		node, err := ParseWhere(tc.src)
@@ -106,13 +110,13 @@ func TestBetweenDoesNotSwallowTheConjunction(t *testing.T) {
 
 func TestParseErrors(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{"not (a = 1)", "not"},
 		{"a = 1 and", "expected a column name"},
 		{"(a = 1", "expected `)`"},
 		{"a in ()", "expected a value"},
 		{"a 'x'", "expected an operator"},
 		{"a = 'x", "unterminated string"},
 		{"a between 1 2", "expected `and`"},
+		{"a = '\u0437\u043d\u0430\u0447' and", "expected a column name"},
 	} {
 		_, err := ParseWhere(tc.src)
 		if err == nil {
@@ -129,5 +133,46 @@ func TestParseEmpty(t *testing.T) {
 	node, err := ParseWhere("   ")
 	if err != nil || node != nil {
 		t.Errorf("ParseWhere(\"\") = %#v, %v; want nil, nil", node, err)
+	}
+}
+
+func TestParseNotGroupNamesTheNegativeOperators(t *testing.T) {
+	_, err := ParseWhere("not (a = 1)")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	got := err.Error()
+	for _, want := range []string{"not contains", "not in", "is not null"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("error = %q, want it to offer %q as the alternative", got, want)
+		}
+	}
+}
+
+// The caret is padded by rune count, so a multi-byte literal before the
+// offending position does not push the marker out of column.
+func TestErrorCaretCountsRunesNotBytes(t *testing.T) {
+	src := "a = '\u0437\u043d\u0430\u0447' and"
+	_, err := ParseWhere(src)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("error = %q, want the caret on its own line", err)
+	}
+	marker := lines[len(lines)-1]
+	if want := utf8.RuneCountInString(src); strings.Index(marker, "^") != want {
+		t.Errorf("caret at column %d of %q, want %d", strings.Index(marker, "^"), marker, want)
+	}
+}
+
+func TestErrorHintIsOnItsOwnLine(t *testing.T) {
+	_, err := ParseWhere("not (a = 1)")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if strings.Contains(err.Error(), "^; ") {
+		t.Errorf("error = %q, want the hint on its own line, not glued to the caret", err)
 	}
 }

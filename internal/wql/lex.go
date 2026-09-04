@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type tokenKind int
@@ -43,31 +44,41 @@ func (l *lexer) all() ([]token, error) {
 }
 
 func (l *lexer) next() (token, error) {
-	for l.pos < len(l.src) && unicode.IsSpace(rune(l.src[l.pos])) {
-		l.pos++
+	for l.pos < len(l.src) {
+		r, size := utf8.DecodeRuneInString(l.src[l.pos:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		l.pos += size
 	}
 	if l.pos >= len(l.src) {
 		return token{kind: tokEOF, pos: l.pos}, nil
 	}
 	start := l.pos
 	c := l.src[l.pos]
+	r, size := utf8.DecodeRuneInString(l.src[l.pos:])
 	switch {
 	case c == '\'' || c == '`' || c == '"':
 		return l.lexString(c)
 	case c == '(' || c == ')' || c == ',':
 		l.pos++
 		return token{kind: tokSymbol, text: string(c), pos: start}, nil
-	case strings.ContainsRune("=<>!~", rune(c)):
+	case strings.ContainsRune("=<>!~", r):
 		return l.lexSymbol()
 	case c == '-' || c == '+' || (c >= '0' && c <= '9'):
 		return l.lexNumber()
-	case isIdentStart(c):
-		for l.pos < len(l.src) && isIdentPart(l.src[l.pos]) {
-			l.pos++
+	case isIdentStart(r):
+		l.pos += size
+		for l.pos < len(l.src) {
+			r, size := utf8.DecodeRuneInString(l.src[l.pos:])
+			if !isIdentPart(r) {
+				break
+			}
+			l.pos += size
 		}
 		return token{kind: tokIdent, text: l.src[start:l.pos], pos: start}, nil
 	}
-	return token{}, errAt(l.src, start, "unexpected character %q", string(c))
+	return token{}, errAt(l.src, start, "unexpected character %q", string(r))
 }
 
 func (l *lexer) lexSymbol() (token, error) {
@@ -128,10 +139,13 @@ func (l *lexer) lexString(quote byte) (token, error) {
 	return token{}, errAt(l.src, start, "unterminated string")
 }
 
-func isIdentStart(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+// isIdentStart accepts any letter, not just ASCII: a column key is whatever
+// string the descriptor publishes and the language has no quoting escape for
+// identifiers.
+func isIdentStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r)
 }
 
-func isIdentPart(c byte) bool {
-	return isIdentStart(c) || (c >= '0' && c <= '9')
+func isIdentPart(r rune) bool {
+	return isIdentStart(r) || unicode.IsDigit(r)
 }
