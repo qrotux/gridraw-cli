@@ -110,9 +110,12 @@ func buildRequest(t tail, desc *wire.Descriptor) (wire.RowsRequest, []string, er
 		return wire.RowsRequest{}, nil, &UsageError{Msg: fmt.Sprintf("grid %q has no searchable column", desc.Name)}
 	}
 
-	pageSize := desc.PageSize
-	if t.Limit > 0 {
-		pageSize = t.Limit
+	// limit is bounds-checked while parsing the tail; the descriptor's own
+	// page size is not ours to trust, so clamp it rather than send a request
+	// the server would reject.
+	pageSize := t.Limit
+	if pageSize == 0 {
+		pageSize = min(max(desc.PageSize, wire.MinPageSize), wire.MaxPageSize)
 	}
 	page := t.Page
 	if page == 0 {
@@ -149,10 +152,8 @@ func streamOne(ctx context.Context, cmd *cobra.Command, api *client.Client, grid
 		_, err := cmd.OutOrStdout().Write(append(bytes.TrimRight(raw, "\n"), '\n'))
 		return err
 	}
-	w, err := render.New(cmd.OutOrStdout(), format, opt)
-	if err != nil {
-		return &UsageError{Msg: err.Error()}
-	}
+	// The format came through render.ParseFormat, so New cannot fail here.
+	w, _ := render.New(cmd.OutOrStdout(), format, opt)
 	if err := w.Head(resp.Total); err != nil {
 		return err
 	}
