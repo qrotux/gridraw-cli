@@ -27,16 +27,14 @@ func jsonToYAML(v any) ([]byte, error) {
 	return yaml.Marshal(numbersToScalars(v))
 }
 
+// numbersToScalars replaces every json.Number with a plain scalar node holding
+// the literal from the response: converting to int64 or float64 first would
+// round an integer wider than int64 and would drop the fractional zero of
+// `1.0`. An untagged plain node is emitted unquoted, so it stays a number.
 func numbersToScalars(v any) any {
 	switch t := v.(type) {
 	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return i
-		}
-		if f, err := t.Float64(); err == nil {
-			return f
-		}
-		return t.String()
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: t.String()}
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, val := range t {
@@ -64,6 +62,9 @@ func writeInfo(cmd *cobra.Command, raw []byte, format string) error {
 	dec.UseNumber()
 	if err := dec.Decode(&v); err != nil {
 		return fmt.Errorf("cannot decode the response: %w", err)
+	}
+	if dec.More() {
+		return fmt.Errorf("the response holds more than one JSON value")
 	}
 	out, err := jsonToYAML(v)
 	if err != nil {
@@ -134,6 +135,6 @@ func newGridCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&output, "output", "o", "", "output format: yaml or json")
-	cmd.Flags().Bool("no-cache", false, "do not read or write the descriptor cache")
+	cmd.Flags().Bool("no-cache", false, "do not write the fetched descriptor into the cache")
 	return cmd
 }

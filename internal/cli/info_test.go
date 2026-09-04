@@ -49,10 +49,14 @@ func TestJSONToYAMLKeepsNumbers(t *testing.T) {
 }
 
 // runInfo runs one information command against a stub server, in a working
-// directory holding the only configuration the command can discover.
+// directory holding the only configuration the command can discover. It
+// returns what the command printed to stdout and the path the server was
+// asked for.
 func runInfo(t *testing.T, cmd *cobra.Command, body string, args ...string) (string, string, error) {
 	t.Helper()
+	var path string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, body)
 	}))
@@ -71,14 +75,17 @@ func runInfo(t *testing.T, cmd *cobra.Command, body string, args ...string) (str
 	cmd.SetErr(&stderr)
 	cmd.SetArgs(args)
 	err := cmd.ExecuteContext(context.Background())
-	return stdout.String(), stderr.String(), err
+	return stdout.String(), path, err
 }
 
 func TestInfoListPrintsYAMLByDefaultAndJSONVerbatim(t *testing.T) {
 	body := `[{"id":"users","pageSize":25}]`
-	stdout, _, err := runInfo(t, newListCmd(), body)
+	stdout, path, err := runInfo(t, newListCmd(), body)
 	if err != nil {
 		t.Fatalf("list: %v", err)
+	}
+	if path != "/api/grids/-/list" {
+		t.Errorf("requested %q, want the list endpoint", path)
 	}
 	if !strings.Contains(stdout, "pageSize: 25") {
 		t.Errorf("stdout = %q, want yaml with an unquoted number", stdout)
@@ -94,9 +101,12 @@ func TestInfoListPrintsYAMLByDefaultAndJSONVerbatim(t *testing.T) {
 
 func TestInfoGridWarmsTheCache(t *testing.T) {
 	body := `{"id":"users","columns":[]}`
-	stdout, _, err := runInfo(t, newGridCmd(), body, "users", "-o", "json")
+	stdout, path, err := runInfo(t, newGridCmd(), body, "users", "-o", "json")
 	if err != nil {
 		t.Fatalf("grid: %v", err)
+	}
+	if path != "/api/grids/users" {
+		t.Errorf("requested %q, want the descriptor endpoint", path)
 	}
 	if stdout != body+"\n" {
 		t.Errorf("stdout = %q", stdout)
@@ -131,5 +141,40 @@ func TestInfoRejectsADataFormat(t *testing.T) {
 	}
 	if !strings.Contains(usage.Msg, "yaml or json") {
 		t.Errorf("message = %q, want the two allowed formats", usage.Msg)
+	}
+}
+
+func TestInfoGridWithoutAnArgumentShowsTheRegistry(t *testing.T) {
+	body := `[{"id":"users"}]`
+	stdout, path, err := runInfo(t, newGridCmd(), body, "-o", "json")
+	if err != nil {
+		t.Fatalf("grid: %v", err)
+	}
+	if path != "/api/grids/-/registry" {
+		t.Errorf("requested %q, want the registry endpoint", path)
+	}
+	if stdout != body+"\n" {
+		t.Errorf("stdout = %q, want the body byte for byte", stdout)
+	}
+}
+
+// TestInfoYAMLKeepsTheNumberLiteral pins the numbers -o yaml must not touch: an
+// integer wider than int64, which float64 would round, and a float whose
+// fractional zero an int conversion would drop.
+func TestInfoYAMLKeepsTheNumberLiteral(t *testing.T) {
+	body := `{"big":123456789012345678901234567890,"edge":9223372036854775808,"ratio":1.0}`
+	stdout, _, err := runInfo(t, newListCmd(), body)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	want := "big: 123456789012345678901234567890\nedge: 9223372036854775808\nratio: 1.0\n"
+	if stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+}
+
+func TestInfoRejectsATrailingValue(t *testing.T) {
+	if _, _, err := runInfo(t, newListCmd(), `{"a":1} {"b":2}`); err == nil {
+		t.Fatal("a body holding two JSON values must not print only the first")
 	}
 }
