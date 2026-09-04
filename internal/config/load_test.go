@@ -134,3 +134,29 @@ func TestLoadFileIgnoresDiscovery(t *testing.T) {
 		t.Errorf("profiles = %v, want only the ones in the named file", cfg.Profiles)
 	}
 }
+
+func TestUserPathFollowsXDG(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/xdg")
+	got, err := UserPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("/xdg", "gridraw", "config.yaml"); got != want {
+		t.Errorf("UserPath = %q, want %q", got, want)
+	}
+}
+
+func TestUserPathFallsBackToHomeConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := UserPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".config", "gridraw", "config.yaml"); got != want {
+		t.Errorf("UserPath = %q, want %q", got, want)
+	}
+}

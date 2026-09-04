@@ -20,5 +20,9 @@ func Save(cfg *Config, path string) error {
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		return &Error{Msg: "cannot write " + path, Err: err}
 	}
-	return os.Chmod(path, 0o600) // an existing file keeps its old mode without this
+	// An existing file keeps its old mode through os.WriteFile.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return &Error{Msg: "cannot restrict the mode of " + path, Err: err}
+	}
+	return nil
 }

@@ -1,6 +1,10 @@
 package cli
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/qrotux/gridraw-cli/internal/config"
+)
 
 // UsageError is a mistake in what the user typed: an unparseable where string,
 // an unknown column, an operator a column does not offer.
@@ -46,6 +50,10 @@ func ExitCode(err error) int {
 	}
 	var cfg *ConfigError
 	if errors.As(err, &cfg) {
+		return 3
+	}
+	var cfgPkg *config.Error
+	if errors.As(err, &cfgPkg) {
 		return 3
 	}
 	var st statusError

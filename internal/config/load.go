@@ -16,11 +16,17 @@ const LocalFileName = ".gridraw.yaml"
 
 var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// UserPath is ~/.config/gridraw/config.yaml.
+// UserPath is $XDG_CONFIG_HOME/gridraw/config.yaml, or ~/.config/gridraw/config.yaml
+// when that variable is unset or empty. os.UserConfigDir is deliberately not used:
+// on darwin it answers ~/Library/Application Support, which is not the promised path.
 func UserPath() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", &Error{Msg: "cannot locate the user config directory", Err: err}
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", &Error{Msg: "cannot locate the home directory", Err: err}
+		}
+		dir = filepath.Join(home, ".config")
 	}
 	return filepath.Join(dir, "gridraw", "config.yaml"), nil
 }
