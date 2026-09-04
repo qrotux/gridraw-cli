@@ -2,7 +2,6 @@ package render
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 )
@@ -77,13 +76,13 @@ func writeObject(w io.Writer, row map[string]any, columns []string) error {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		key, err := json.Marshal(kv.Key)
+		key, err := compactJSON(kv.Key)
 		if err != nil {
 			return err
 		}
 		buf.Write(key)
 		buf.WriteByte(':')
-		val, err := json.Marshal(kv.Value)
+		val, err := compactJSON(kv.Value)
 		if err != nil {
 			return err
 		}

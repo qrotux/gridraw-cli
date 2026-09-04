@@ -160,3 +160,19 @@ func TestCorruptEntryIsRefetched(t *testing.T) {
 		t.Errorf("hits = %d, want 1", *hits)
 	}
 }
+
+// TestCacheWithoutARootIsANoOp pins that an unresolvable cache directory costs
+// a request and nothing more, rather than failing the command.
+func TestCacheWithoutARootIsANoOp(t *testing.T) {
+	_, api, hits := newCachedFixture(t)
+	cache := &Cache{Dir: "", Profile: "default", TTL: time.Minute}
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := cache.Descriptor(ctx, api, "users", CacheDefault); err != nil {
+			t.Fatalf("a missing cache root must not fail the request: %v", err)
+		}
+	}
+	if *hits != 2 {
+		t.Errorf("server hits = %d, want 2: nothing may be served from a disabled cache", *hits)
+	}
+}

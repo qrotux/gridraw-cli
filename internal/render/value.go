@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -21,7 +22,7 @@ func Cell(v any, nullVal string) string {
 	case float64:
 		return fmt.Sprintf("%v", t)
 	}
-	raw, err := json.Marshal(v)
+	raw, err := compactJSON(v)
 	if err != nil {
 		return fmt.Sprintf("%v", v)
 	}
@@ -58,4 +59,17 @@ func sortedPairs(row map[string]any) []keyValue {
 		out = append(out, keyValue{k, row[k]})
 	}
 	return out
+}
+
+// compactJSON encodes a value on one line without HTML escaping. The standard
+// json.Marshal turns <, > and & into \u003c and friends, which would rewrite
+// the text of a cell the server sent verbatim.
+func compactJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

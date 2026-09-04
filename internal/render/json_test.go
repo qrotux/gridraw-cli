@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -80,5 +81,71 @@ func TestEmptyResult(t *testing.T) {
 	w.Close()
 	if got := buf.String(); got != "[]\n" {
 		t.Errorf("empty jsona = %q, want \"[]\\n\"", got)
+	}
+}
+
+func TestJSONWritersDoNotEscapeHTML(t *testing.T) {
+	var buf bytes.Buffer
+	w, err := New(&buf, FormatJSONL, Options{Columns: []string{"note"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Head(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Row(map[string]any{"note": "a<b&c>d"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.String(), "{\"note\":\"a<b&c>d\"}\n"; got != want {
+		t.Errorf("jsonl = %q, want %q", got, want)
+	}
+}
+
+// TestWriterPropagatesAWriteError pins that a failing destination — a full disk,
+// a closed pipe — surfaces instead of being swallowed mid-stream.
+func TestWriterPropagatesAWriteError(t *testing.T) {
+	for _, format := range []Format{FormatJSON, FormatJSONA, FormatJSONL, FormatYAMLA, FormatCSV, FormatTSV} {
+		w, err := New(failingWriter{}, format, Options{Columns: []string{"id"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		headErr := w.Head(nil)
+		rowErr := w.Row(map[string]any{"id": "a"})
+		if headErr == nil && rowErr == nil {
+			t.Errorf("%s: neither Head nor Row reported the write error", format)
+		}
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
+
+var errWriteFailed = errors.New("no space left on device")
+
+// TestOrderedFallsBackToSortedKeys pins the no-columns path: without a column
+// list the row still has to come out in a stable order.
+func TestOrderedFallsBackToSortedKeys(t *testing.T) {
+	var buf bytes.Buffer
+	w, _ := New(&buf, FormatJSONL, Options{})
+	_ = w.Head(nil)
+	_ = w.Row(map[string]any{"b": "2", "a": "1", "c": "3"})
+	if got, want := buf.String(), "{\"a\":\"1\",\"b\":\"2\",\"c\":\"3\"}\n"; got != want {
+		t.Errorf("jsonl = %q, want the keys sorted", got)
+	}
+}
+
+// TestRowKeysFollowTheColumnList pins both halves of the column contract: a
+// column the row lacks is null, a key the list omits is dropped.
+func TestRowKeysFollowTheColumnList(t *testing.T) {
+	var buf bytes.Buffer
+	w, _ := New(&buf, FormatJSONL, Options{Columns: []string{"id", "missing"}})
+	_ = w.Head(nil)
+	_ = w.Row(map[string]any{"id": "a", "extra": "dropped"})
+	if got, want := buf.String(), "{\"id\":\"a\",\"missing\":null}\n"; got != want {
+		t.Errorf("jsonl = %q, want %q", got, want)
 	}
 }

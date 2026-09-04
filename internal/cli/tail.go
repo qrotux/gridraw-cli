@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -113,6 +114,9 @@ func parseTail(args []string) (tail, error) {
 			t.Search = value
 		case "limit":
 			n, err := strconv.Atoi(value)
+			if errors.Is(err, strconv.ErrRange) {
+				return t, &UsageError{Msg: fmt.Sprintf("limit must be between %d and %d, got %s", wire.MinPageSize, wire.MaxPageSize, value)}
+			}
 			if err != nil {
 				return t, &UsageError{Msg: fmt.Sprintf("limit must be a whole number, got %q", value)}
 			}
@@ -122,6 +126,9 @@ func parseTail(args []string) (tail, error) {
 			t.Limit = n
 		case "page":
 			n, err := strconv.Atoi(value)
+			if errors.Is(err, strconv.ErrRange) {
+				return t, &UsageError{Msg: fmt.Sprintf("page is out of range, got %s", value)}
+			}
 			if err != nil {
 				return t, &UsageError{Msg: fmt.Sprintf("page must be a whole number, got %q", value)}
 			}

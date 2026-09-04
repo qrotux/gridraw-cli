@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/qrotux/gridraw-cli/internal/wire"
 )
@@ -122,3 +124,25 @@ func TestServerErrorWithTextBody(t *testing.T) {
 }
 
 func asHTTPError(err error, target **HTTPError) bool { return errors.As(err, target) }
+
+// TestErrorBodyTruncationKeepsValidUTF8 pins that a long error message is cut
+// at a rune boundary: slicing bytes would leave half a character behind.
+func TestErrorBodyTruncationKeepsValidUTF8(t *testing.T) {
+	long := strings.Repeat("ы", 4000) // two bytes each, so the cap lands mid-rune
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, long)
+	}))
+	defer srv.Close()
+	_, err := New(srv.URL, "", nil).Raw(context.Background(), "GET", "/-/list")
+	var he *HTTPError
+	if !asHTTPError(err, &he) {
+		t.Fatalf("error = %T, want *HTTPError", err)
+	}
+	if !utf8.ValidString(he.Msg) {
+		t.Error("the truncated message is not valid UTF-8")
+	}
+	if !strings.HasSuffix(he.Msg, "…") {
+		t.Errorf("a truncated message should say so, got %q", he.Msg[len(he.Msg)-8:])
+	}
+}

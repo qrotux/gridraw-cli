@@ -15,12 +15,16 @@ import (
 // maxErrorBody caps how much of a non-JSON error body reaches the user.
 const maxErrorBody = 2048
 
-// HTTPError is a non-2xx response. The CLI maps 4xx to exit code 4 and 5xx to 5.
+// HTTPError is a non-2xx response.
 type HTTPError struct {
+	// Status is the HTTP status code the server answered with.
 	Status int
-	Msg    string
+	// Msg is the server's own message, or the response body when it carried no
+	// {"error": …} envelope.
+	Msg string
 }
 
+// Error renders the status and the server's message.
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("server returned %d: %s", e.Status, e.Msg)
 }
@@ -69,12 +73,18 @@ func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte,
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// A failing proxy can answer with megabytes of HTML; only the part that
+		// reaches the user is worth reading.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
+		if err != nil {
+			return nil, err
+		}
+		return nil, &HTTPError{Status: resp.StatusCode, Msg: errorMessage(body)}
+	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, &HTTPError{Status: resp.StatusCode, Msg: errorMessage(raw)}
 	}
 	return raw, nil
 }
@@ -90,7 +100,9 @@ func errorMessage(raw []byte) string {
 	}
 	msg := strings.TrimSpace(string(raw))
 	if len(msg) > maxErrorBody {
-		msg = msg[:maxErrorBody] + "…"
+		// Cutting by bytes can split a rune; dropping the remnant keeps the
+		// message valid UTF-8.
+		msg = strings.ToValidUTF8(msg[:maxErrorBody], "") + "…"
 	}
 	if msg == "" {
 		msg = "empty response body"

@@ -23,8 +23,14 @@ func Order(src string, d *wire.Descriptor) ([]wire.SortSpec, error) {
 		dir := "asc"
 		if strings.HasPrefix(term, "-") {
 			dir, term = "desc", strings.TrimSpace(term[1:])
+			if term == "" {
+				return nil, &Error{Pos: -1, Msg: fmt.Sprintf("the sort term %q names no column", strings.TrimSpace(part))}
+			}
 		}
 		if fields := strings.Fields(term); len(fields) == 2 {
+			if dir == "desc" {
+				return nil, &Error{Pos: -1, Msg: fmt.Sprintf("the sort term %q gives the direction twice", strings.TrimSpace(part))}
+			}
 			term = fields[0]
 			switch strings.ToLower(fields[1]) {
 			case "asc":

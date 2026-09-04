@@ -24,3 +24,13 @@ func TestCell(t *testing.T) {
 		}
 	}
 }
+
+// TestCellDoesNotEscapeHTML pins that a cell's text survives as the server sent
+// it: encoding/json escapes <, > and & by default, which would silently rewrite
+// the value in csv, tsv and every JSON format alike.
+func TestCellDoesNotEscapeHTML(t *testing.T) {
+	got := Cell([]any{"a<b&c>d"}, "")
+	if got != `["a<b&c>d"]` {
+		t.Errorf("Cell = %s, want the text unescaped", got)
+	}
+}

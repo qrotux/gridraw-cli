@@ -60,10 +60,14 @@ func ExitCode(err error) int {
 	}
 	var st statusError
 	if errors.As(err, &st) {
-		if s := st.HTTPStatus(); s >= 500 {
+		switch s := st.HTTPStatus(); {
+		case s >= 500:
 			return 5
+		case s >= 400:
+			return 4
 		}
-		return 4
+		// A 1xx or 3xx the client did not follow is neither the request's fault
+		// nor a server failure, so it falls through to the general code.
 	}
 	return 1
 }

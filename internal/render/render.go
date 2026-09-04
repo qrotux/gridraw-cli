@@ -11,13 +11,21 @@ import (
 type Format string
 
 const (
-	FormatJSON  Format = "json"
+	// FormatJSON is the response as the server sent it, or an envelope carrying
+	// the total and the rows when paging.
+	FormatJSON Format = "json"
+	// FormatJSONA is a JSON array of the rows.
 	FormatJSONA Format = "jsona"
+	// FormatJSONL is one compact JSON object per line.
 	FormatJSONL Format = "jsonl"
-	FormatYAML  Format = "yaml"
+	// FormatYAML is the total and the rows as a YAML document.
+	FormatYAML Format = "yaml"
+	// FormatYAMLA is a YAML sequence of the rows, with no prologue.
 	FormatYAMLA Format = "yamla"
-	FormatCSV   Format = "csv"
-	FormatTSV   Format = "tsv"
+	// FormatCSV is the rows as RFC 4180 comma-separated records.
+	FormatCSV Format = "csv"
+	// FormatTSV is the rows as tab-separated records with escaped controls.
+	FormatTSV Format = "tsv"
 )
 
 // Options configure a writer. Columns fixes the key order of every row.

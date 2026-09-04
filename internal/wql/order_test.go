@@ -54,3 +54,20 @@ func TestColumns(t *testing.T) {
 		t.Errorf("empty columns = %v, %v; want nil, nil", got, err)
 	}
 }
+
+func TestOrderLoneMinus(t *testing.T) {
+	_, err := Order("-", testDescriptor())
+	if err == nil || !strings.Contains(err.Error(), "names no column") {
+		t.Errorf("error = %v, want it to say the term names no column", err)
+	}
+}
+
+// TestOrderRejectsTwoDirections pins that a contradictory term is refused
+// rather than silently resolved: "-rating asc" used to sort ascending.
+func TestOrderRejectsTwoDirections(t *testing.T) {
+	for _, src := range []string{"-rating asc", "-rating desc"} {
+		if _, err := Order(src, testDescriptor()); err == nil || !strings.Contains(err.Error(), "direction twice") {
+			t.Errorf("%q: error = %v, want it refused", src, err)
+		}
+	}
+}

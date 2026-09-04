@@ -106,7 +106,9 @@ func (c *Cache) get(grid string) *wire.Descriptor {
 // is refused rather than sanitised: the caller treats a refusal as a cache miss
 // or a no-op, which costs one HTTP request and nothing else.
 func (c *Cache) path(grid string) (string, bool) {
-	if !safeSegment(c.Profile) || !safeSegment(grid) {
+	// An empty root means the cache directory could not be resolved; the cache
+	// then simply does nothing, since a cache problem is never fatal here.
+	if c.Dir == "" || !safeSegment(c.Profile) || !safeSegment(grid) {
 		return "", false
 	}
 	return filepath.Join(c.Dir, c.Profile, grid+".json"), true

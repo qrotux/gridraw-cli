@@ -78,3 +78,17 @@ func TestSplitArgs(t *testing.T) {
 		}
 	}
 }
+
+// TestTailOutOfRangeIntegers pins that a number too large for an int is
+// reported as out of range rather than as "not a whole number", which it is.
+func TestTailOutOfRangeIntegers(t *testing.T) {
+	for _, tc := range []struct{ arg, want string }{
+		{"limit", "must be between 1 and 100"},
+		{"page", "out of range"},
+	} {
+		_, err := parseTail([]string{"users", tc.arg, "99999999999999999999"})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: error = %v, want it to mention %q", tc.arg, err, tc.want)
+		}
+	}
+}
