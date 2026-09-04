@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 func TestTailFull(t *testing.T) {
@@ -43,6 +45,34 @@ func TestTailErrors(t *testing.T) {
 		_, err := parseTail(tc.args)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%v: error = %v, want it to mention %q", tc.args, err, tc.want)
+		}
+	}
+}
+
+// TestSplitArgs pins the split that lets `order -id` through: pflag would read
+// it as a shorthand cluster, so the keyword takes its value first.
+func TestSplitArgs(t *testing.T) {
+	flags := pflag.NewFlagSet("from", pflag.ContinueOnError)
+	flags.StringP("output", "o", "", "")
+	flags.String("null-val", "", "")
+	flags.Bool("all", false, "")
+	for _, tc := range []struct {
+		args       []string
+		tail, flag string
+	}{
+		{[]string{"users", "order", "-id"}, "users order -id", ""},
+		{[]string{"users", "-o", "csv", "order", "-id", "--all"}, "users order -id", "-o csv --all"},
+		{[]string{"users", "-ocsv", "limit", "5"}, "users limit 5", "-ocsv"},
+		{[]string{"users", "--null-val=-", "where", "a = 1"}, "users where a = 1", "--null-val=-"},
+		{[]string{"users", "--", "order", "-id"}, "users order -id", ""},
+		{[]string{"users", "--nosuch", "limit", "5"}, "users limit 5", "--nosuch"},
+	} {
+		tailArgs, flagArgs := splitArgs(tc.args, flags)
+		if got := strings.Join(tailArgs, " "); got != tc.tail {
+			t.Errorf("%v: tail = %q, want %q", tc.args, got, tc.tail)
+		}
+		if got := strings.Join(flagArgs, " "); got != tc.flag {
+			t.Errorf("%v: flags = %q, want %q", tc.args, got, tc.flag)
 		}
 	}
 }

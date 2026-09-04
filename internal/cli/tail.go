@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/qrotux/gridraw-cli/internal/wire"
+	"github.com/spf13/pflag"
 )
 
 // tail is the parsed keyword tail of `gridraw from`.
@@ -21,7 +22,53 @@ type tail struct {
 
 var tailKeywords = []string{"columns", "where", "order", "search", "limit", "page"}
 
-// parseTail reads the positional keyword arguments cobra left after the flags.
+// splitArgs separates the keyword tail from the flags, which is why `from`
+// turns cobra's own flag parsing off: pflag reads `order -id` as an unknown
+// shorthand cluster and refuses the documented form of a descending sort. A
+// keyword takes the word after it whatever it looks like; everything else is
+// routed by the flag set, so a flag that needs a value keeps it. `--` ends the
+// split the way pflag ends parsing: the rest is tail.
+func splitArgs(args []string, flags *pflag.FlagSet) (tailArgs, flagArgs []string) {
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i]; {
+		case arg == "--":
+			return append(tailArgs, args[i+1:]...), flagArgs
+		case isKeyword(arg):
+			tailArgs = append(tailArgs, arg)
+			if i+1 < len(args) {
+				tailArgs = append(tailArgs, args[i+1])
+				i++
+			}
+		case len(arg) > 1 && arg[0] == '-':
+			flagArgs = append(flagArgs, arg)
+			if needsValue(arg, flags) && i+1 < len(args) {
+				flagArgs = append(flagArgs, args[i+1])
+				i++
+			}
+		default:
+			tailArgs = append(tailArgs, arg)
+		}
+	}
+	return tailArgs, flagArgs
+}
+
+// needsValue reports whether a flag takes the next argument as its value. An
+// unknown flag answers no, so pflag reports it rather than swallowing a word.
+func needsValue(arg string, flags *pflag.FlagSet) bool {
+	if strings.Contains(arg, "=") {
+		return false
+	}
+	var f *pflag.Flag
+	if strings.HasPrefix(arg, "--") {
+		f = flags.Lookup(arg[2:])
+	} else if len(arg) == 2 {
+		// A longer cluster carries its value attached, as in -ocsv.
+		f = flags.ShorthandLookup(arg[1:])
+	}
+	return f != nil && f.NoOptDefVal == ""
+}
+
+// parseTail reads the positional keyword arguments left after the flags.
 func parseTail(args []string) (tail, error) {
 	var t tail
 	if len(args) == 0 {

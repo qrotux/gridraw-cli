@@ -25,8 +25,18 @@ func newFromCmd() *cobra.Command {
 		Use:   `from GRID [columns "a,b"] [where "…"] [order "a,-b"] [search "…"] [limit N] [page M]`,
 		Short: "Query a grid's rows",
 		Args:  cobra.ArbitraryArgs,
+		// The tail is split from the flags by splitArgs, not by pflag.
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := parseTail(args)
+			cmd.InheritedFlags() // merges --config and --config-file into cmd.Flags()
+			tailArgs, flagArgs := splitArgs(args, cmd.Flags())
+			if err := cmd.Flags().Parse(flagArgs); err != nil {
+				return &UsageError{Msg: err.Error()}
+			}
+			if help, _ := cmd.Flags().GetBool("help"); help {
+				return cmd.Help()
+			}
+			t, err := parseTail(tailArgs)
 			if err != nil {
 				return err
 			}
