@@ -3,10 +3,16 @@ package config
 import (
 	"bufio"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
+
+// ErrNoInput reports that a question went unanswered because the input ended.
+// The command turns it into a usage error: a non-interactive run must supply
+// the flags instead.
+var ErrNoInput = errors.New("no input to answer the question")
 
 // AuthHeader builds the Authorization header value from the two mutually
 // exclusive flags. Both empty yields an empty header: an unguarded server.
@@ -17,10 +23,10 @@ func AuthHeader(bearer, basic string) (string, error) {
 	case bearer != "":
 		return "Bearer " + bearer, nil
 	case basic != "":
-		// The whole string is encoded, so a password may contain colons.
 		if !strings.Contains(basic, ":") {
 			return "", &Error{Msg: `--basic-auth must be "username:password"`}
 		}
+		// The whole string is encoded, so a password may itself contain colons.
 		return "Basic " + base64.StdEncoding.EncodeToString([]byte(basic)), nil
 	}
 	return "", nil
@@ -63,7 +69,10 @@ func (p *Prompter) Ask(question, def string) (string, error) {
 	}
 	line, err := p.In.ReadString('\n')
 	if err != nil && line == "" {
-		return "", err
+		if errors.Is(err, io.EOF) {
+			return "", ErrNoInput
+		}
+		return "", &Error{Msg: "cannot read the answer", Err: err}
 	}
 	line = strings.TrimSpace(line)
 	if line == "" {

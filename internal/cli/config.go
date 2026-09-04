@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/qrotux/gridraw-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -22,61 +25,91 @@ func newConfigCmd() *cobra.Command {
 			if err != nil {
 				return &UsageError{Msg: err.Error()}
 			}
-			p := config.NewPrompter(cmd.InOrStdin(), cmd.ErrOrStderr())
+			p := prompt{config.NewPrompter(cmd.InOrStdin(), cmd.ErrOrStderr())}
 			userPath, localPath, err := config.Discover()
 			if err != nil {
 				return err
 			}
+			silent := flagsComplete(cmd)
+			target := localPath
+			if global {
+				target = userPath
+			}
 
 			if name == "" {
-				if name, err = p.Ask("Configuration name", "default"); err != nil {
+				if silent {
+					name = "default"
+				} else if name, err = p.Ask("Configuration name", "default"); err != nil {
 					return err
 				}
 			}
-			if host == "" {
-				if host, err = p.Ask("Grids URL, e.g. http://localhost:8080/api/grids", ""); err != nil {
-					return err
+			// Editing a profile offers its stored values, so an empty answer
+			// keeps what is there instead of resetting it to a built-in default.
+			old := existingProfile(name, target)
+
+			if !silent {
+				for host == "" {
+					if host, err = p.Ask("Grids URL, e.g. http://localhost:8080/api/grids", old.Host); err != nil {
+						return err
+					}
+					if host == "" {
+						fmt.Fprintln(cmd.ErrOrStderr(), "  a grids URL is required")
+					}
 				}
 			}
-			if header == "" && bearer == "" && basic == "" {
-				kind, err := p.Choose("Authorization", []string{"bearer", "basic", "none"}, "bearer")
+			if !silent && header == "" && bearer == "" && basic == "" {
+				header = old.Header
+				kind, err := p.Choose("Authorization", []string{"bearer", "basic", "none"}, authKind(old))
 				if err != nil {
 					return err
 				}
 				switch kind {
 				case "bearer":
-					tok, err := p.Ask("Bearer token", "")
+					keep := keptHeader(old.Header, "Bearer ")
+					tok, err := p.Ask(keepHint("Bearer token", keep), "")
 					if err != nil {
 						return err
 					}
-					header, _ = config.AuthHeader(tok, "")
+					if tok == "" && keep != "" {
+						header = keep
+					} else {
+						header, _ = config.AuthHeader(tok, "")
+					}
 				case "basic":
-					user, err := p.Ask("Username", "")
+					keep := keptHeader(old.Header, "Basic ")
+					user, err := p.Ask("Username", basicUser(keep))
 					if err != nil {
 						return err
 					}
-					pass, err := p.Ask("Password", "")
+					pass, err := p.Ask(keepHint("Password", keep), "")
 					if err != nil {
 						return err
 					}
-					header, _ = config.AuthHeader("", user+":"+pass)
+					if pass == "" && keep != "" && user == basicUser(keep) {
+						header = keep
+					} else {
+						header, _ = config.AuthHeader("", user+":"+pass)
+					}
+				case "none":
+					header = ""
 				}
 			}
 			if infoOut == "" {
-				if infoOut, err = p.Choose("Default info output", []string{"yaml", "json"}, "yaml"); err != nil {
+				if silent {
+					infoOut = "yaml"
+				} else if infoOut, err = p.Choose("Default info output", []string{"yaml", "json"}, old.InfoOutput()); err != nil {
 					return err
 				}
 			}
 			if dataOut == "" {
-				if dataOut, err = p.Choose("Default data output", []string{"csv", "tsv", "json", "jsona", "jsonl", "yaml", "yamla"}, "csv"); err != nil {
+				if silent {
+					dataOut = "csv"
+				} else if dataOut, err = p.Choose("Default data output", []string{"csv", "tsv", "json", "jsona", "jsonl", "yaml", "yamla"}, old.DataOutput()); err != nil {
 					return err
 				}
 			}
 
-			target := localPath
-			if global {
-				target = userPath
-			} else if !cmd.Flags().Changed("global") && !flagsComplete(cmd) {
+			if !silent && !cmd.Flags().Changed("global") {
 				where, err := p.Choose(fmt.Sprintf("Write to %s or %s", localPath, userPath), []string{"local", "global"}, "local")
 				if err != nil {
 					return err
@@ -118,11 +151,87 @@ func newConfigCmd() *cobra.Command {
 	return cmd
 }
 
-// flagsComplete reports whether the run needs no questions at all.
+// flagsComplete reports whether the flags carry a whole profile: a host and an
+// authorization. Every other field then takes its documented default and no
+// question is printed.
 func flagsComplete(cmd *cobra.Command) bool {
 	f := cmd.Flags()
-	auth := f.Changed("bearer-token") || f.Changed("basic-auth")
-	return f.Changed("host") && auth && f.Changed("info-output") && f.Changed("data-output")
+	return f.Changed("host") && (f.Changed("bearer-token") || f.Changed("basic-auth"))
+}
+
+// prompt classifies the prompter's errors, which reach the user as exit codes.
+type prompt struct{ *config.Prompter }
+
+func (p prompt) Ask(question, def string) (string, error) {
+	got, err := p.Prompter.Ask(question, def)
+	return got, promptError(err)
+}
+
+func (p prompt) Choose(question string, options []string, def string) (string, error) {
+	got, err := p.Prompter.Choose(question, options, def)
+	return got, promptError(err)
+}
+
+func promptError(err error) error {
+	if errors.Is(err, config.ErrNoInput) {
+		return &UsageError{Msg: "no answer to read; supply --host and --bearer-token or --basic-auth to configure without questions"}
+	}
+	return err
+}
+
+// existingProfile is what the questions default to: the profile in the file
+// about to be written, or the one the merged configuration shows, since the
+// user may be editing what `gridraw config show` printed.
+func existingProfile(name, target string) config.Profile {
+	if cfg, err := config.LoadFileOrNew(target); err == nil {
+		if p, ok := cfg.Profiles[name]; ok {
+			return p
+		}
+	}
+	if cfg, err := config.Load(); err == nil {
+		if p, ok := cfg.Profiles[name]; ok {
+			return p
+		}
+	}
+	return config.Profile{}
+}
+
+// authKind is the authorization the profile already uses; a profile with a
+// host but no header guards nothing, which is a deliberate choice to keep.
+func authKind(p config.Profile) string {
+	switch {
+	case strings.HasPrefix(p.Header, "Basic "):
+		return "basic"
+	case p.Header != "":
+		return "bearer"
+	case p.Host != "":
+		return "none"
+	}
+	return "bearer"
+}
+
+func keptHeader(header, scheme string) string {
+	if strings.HasPrefix(header, scheme) {
+		return header
+	}
+	return ""
+}
+
+// keepHint says what an empty answer keeps, with the credential masked.
+func keepHint(question, header string) string {
+	if header == "" {
+		return question
+	}
+	return fmt.Sprintf("%s (empty keeps %s)", question, config.MaskHeader(header))
+}
+
+func basicUser(header string) string {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(header, "Basic "))
+	if err != nil {
+		return ""
+	}
+	user, _, _ := strings.Cut(string(raw), ":")
+	return user
 }
 
 func newConfigListCmd() *cobra.Command {
@@ -140,7 +249,7 @@ func newConfigListCmd() *cobra.Command {
 				if name == cfg.Current {
 					marker = "*"
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s %-20s %s\n", marker, name, cfg.Profiles[name].Host)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s %-20s %-40s %s\n", marker, name, cfg.Profiles[name].Host, cfg.Origin[name])
 			}
 			return nil
 		},
@@ -159,6 +268,9 @@ func newConfigUseCmd() *cobra.Command {
 			}
 			if _, _, err := cfg.Profile(args[0]); err != nil {
 				return err
+			}
+			if len(cfg.Sources) == 0 {
+				return &config.Error{Msg: "no configuration file to update; run `gridraw config` to create one"}
 			}
 			// current is rewritten in the nearest file that was read, so a
 			// local file keeps its precedence over the user one.

@@ -18,6 +18,9 @@ type Config struct {
 
 	// Sources lists the files this Config was merged from, nearest last.
 	Sources []string `yaml:"-"`
+
+	// Origin maps each profile name to the file the merge took it from.
+	Origin map[string]string `yaml:"-"`
 }
 
 // Error is a configuration problem; the CLI maps it to exit code 3.

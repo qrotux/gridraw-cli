@@ -66,6 +66,7 @@ func LoadFile(path string) (*Config, error) {
 		cfg.Current = "default"
 	}
 	cfg.Sources = []string{path}
+	cfg.Origin = originOf(cfg, path)
 	return cfg, validate(cfg)
 }
 
@@ -76,16 +77,17 @@ func LoadFileOrNew(path string) (*Config, error) {
 		return nil, err
 	}
 	if !found {
-		return &Config{Profiles: map[string]Profile{}}, nil
+		return &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}}, nil
 	}
 	cfg.Sources = []string{path}
+	cfg.Origin = originOf(cfg, path)
 	return cfg, validate(cfg)
 }
 
 // Merge reads both files and lets the local one win profile by profile. A
 // missing file contributes nothing; both missing yields an empty Config.
 func Merge(userPath, localPath string) (*Config, error) {
-	out := &Config{Profiles: map[string]Profile{}}
+	out := &Config{Profiles: map[string]Profile{}, Origin: map[string]string{}}
 	for _, path := range []string{userPath, localPath} {
 		if path == "" {
 			continue
@@ -100,6 +102,7 @@ func Merge(userPath, localPath string) (*Config, error) {
 		out.Sources = append(out.Sources, path)
 		for name, p := range cfg.Profiles {
 			out.Profiles[name] = p // a same-named profile is replaced whole
+			out.Origin[name] = path
 		}
 		if cfg.Current != "" {
 			out.Current = cfg.Current
@@ -109,6 +112,14 @@ func Merge(userPath, localPath string) (*Config, error) {
 		out.Current = "default"
 	}
 	return out, validate(out)
+}
+
+func originOf(cfg *Config, path string) map[string]string {
+	origin := make(map[string]string, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		origin[name] = path
+	}
+	return origin
 }
 
 func readFile(path string) (*Config, bool, error) {

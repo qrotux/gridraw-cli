@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"errors"
+	"io"
+	"strings"
+	"testing"
+)
 
 func TestAuthHeader(t *testing.T) {
 	tests := []struct {
@@ -42,5 +47,42 @@ func TestMaskHeader(t *testing.T) {
 		if got := MaskHeader(tc.in); got != tc.want {
 			t.Errorf("MaskHeader(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestAskEmptyLineTakesTheDefault(t *testing.T) {
+	p := NewPrompter(strings.NewReader("\n  \n"), io.Discard)
+	for _, want := range []string{"yaml", "yaml"} {
+		got, err := p.Ask("Format", want)
+		if err != nil {
+			t.Fatalf("Ask: %v", err)
+		}
+		if got != want {
+			t.Errorf("Ask = %q, want %q", got, want)
+		}
+	}
+}
+
+// A piped or non-tty run reaches EOF at the first question; the error must be
+// classifiable so the CLI can tell the user to pass flags instead.
+func TestAskOnEmptyInputReportsNoInput(t *testing.T) {
+	p := NewPrompter(strings.NewReader(""), io.Discard)
+	if _, err := p.Ask("Host", ""); !errors.Is(err, ErrNoInput) {
+		t.Errorf("Ask error = %v, want ErrNoInput", err)
+	}
+}
+
+func TestChooseReAsksOnAnInvalidAnswer(t *testing.T) {
+	var out strings.Builder
+	p := NewPrompter(strings.NewReader("xml\njson\n"), &out)
+	got, err := p.Choose("Format", []string{"yaml", "json"}, "yaml")
+	if err != nil {
+		t.Fatalf("Choose: %v", err)
+	}
+	if got != "json" {
+		t.Errorf("Choose = %q, want %q", got, "json")
+	}
+	if !strings.Contains(out.String(), `"xml" is not one of`) {
+		t.Errorf("Choose did not report the invalid answer: %q", out.String())
 	}
 }
