@@ -108,9 +108,38 @@ jobs:
           cd dist
           sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
           cat SHA256SUMS
+      - name: release notes
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          base="https://github.com/$REPO/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "## Downloads"
+            echo
+            echo "| platform | file |"
+            echo "|---|---|"
+            for f in dist/*.tar.gz dist/*.zip; do
+              name="$(basename "$f")"
+              # gridraw-v1.2.3-darwin-arm64.tar.gz -> darwin/arm64
+              platform="$(echo "$name" | sed -E "s/^gridraw-.*-([a-z]+)-([a-z0-9]+)\.(tar\.gz|zip)$/\1\/\2/")"
+              echo "| \`$platform\` | [$name]($base/$name) |"
+            done
+            echo
+            echo "Verify a download against [SHA256SUMS]($base/SHA256SUMS):"
+            echo
+            echo '```sh'
+            echo "curl -LO $base/SHA256SUMS"
+            echo "sha256sum --ignore-missing -c SHA256SUMS"
+            echo '```'
+            echo
+            echo "Or build from source: \`go install github.com/qrotux/gridraw-cli/cmd/gridraw@$GITHUB_REF_NAME\`"
+          } > RELEASE_BODY.md
+          cat RELEASE_BODY.md
       # Pinned by commit: this third-party action runs with contents: write, so
       # a moved tag must not be able to change what runs here. (v3.0.3)
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           files: dist/*
           fail_on_unmatched_files: true
+          body_path: RELEASE_BODY.md
+          generate_release_notes: true

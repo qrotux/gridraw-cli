@@ -637,7 +637,9 @@ the upload action does not preserve it; `chmod +x gridraw` after unzipping.
 the tag into each binary — failing the build if the stamp did not take —
 packages every target with the README and the licence (`.tar.gz`, or `.zip` for
 Windows), and then one job publishes them with a `SHA256SUMS` file to the
-GitHub release.
+GitHub release. The release notes are written for you: a table of per-platform
+download links, how to check a download against the checksums, and the
+`go install` line for the tag, followed by GitHub's generated changelog.
 
 ## License
 
