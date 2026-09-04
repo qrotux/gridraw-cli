@@ -142,3 +142,16 @@ func TestBindErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestBindOperatorHintUsesWrittenSpellings pins that the hint lists operators
+// as a where clause takes them: a user copying "notIn" out of it would only
+// get a second error.
+func TestBindOperatorHintUsesWrittenSpellings(t *testing.T) {
+	_, err := bind(t, "role = 'admin'")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if !strings.Contains(err.Error(), "it offers in, not in") {
+		t.Errorf("hint = %q, want the written spellings", err)
+	}
+}

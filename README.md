@@ -16,6 +16,9 @@ dan@example.com,user,4.1,4.10,false,12:00:00,2026-08-30T16:11:20Z,"[""early"",""
 Data goes to stdout, everything else — counts, progress, errors — goes to
 stderr, so a redirect produces exactly the data you asked for.
 
+Recipes for common tasks are in [USAGE.md](USAGE.md); instructions for an LLM
+agent driving this CLI are in [AGENTS.md](AGENTS.md).
+
 ## Contents
 
 - [Install](#install)
@@ -397,7 +400,7 @@ one lists what it does offer:
 $ gridraw from example where "email > 'a'"
 Error: column "email" of type string does not offer the operator gt at position 0: email > 'a'
 ^
-it offers eq, neq, contains, notContains, starts, ends
+it offers =, !=, contains, not contains, starts with, ends with
 ```
 
 ### Literals

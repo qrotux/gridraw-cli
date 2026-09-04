@@ -205,7 +205,9 @@ func columnType(col *wire.Column) string {
 func operatorNames(col *wire.Column) []string {
 	out := make([]string, 0, len(col.Filter.Operators))
 	for _, o := range col.Filter.Operators {
-		out = append(out, string(o.Op))
+		// Spelled the way a where clause takes them, so the hint can be copied
+		// into the query that failed.
+		out = append(out, Spelling(o.Op))
 	}
 	return out
 }
