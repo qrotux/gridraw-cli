@@ -1,0 +1,13 @@
+# Design scratch space, not part of the module
+/basic/
+
+# Build output
+/gridraw
+/dist/
+
+# Local tooling and editor state
+.DS_Store
+.idea/
+.vscode/
+*.local.yaml
+.gridraw.yaml
