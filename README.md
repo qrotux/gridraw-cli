@@ -211,7 +211,7 @@ name: example
 idColumn: id
 pageSize: 10
 defaultSort: createdAt desc
-search: [Email, Tags]
+search: [email, tags]
 columns:
     - key: email
       title: Email

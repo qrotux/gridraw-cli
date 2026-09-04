@@ -79,7 +79,7 @@ A time or datetime column may carry a resolution: "gridraw grid NAME" prints it
 as "step", in seconds. Values must be aligned to it — with step 900, '09:15:00'
 is accepted and '09:07:00' is refused by the server — and the operators then
 act on whole buckets, so "= '09:15:00'" matches everything up to '09:29:59'.
-This is the one rule the CLI cannot check for you.
+The CLI does not check alignment; the server is what refuses a value.
 
 LIMITS
 

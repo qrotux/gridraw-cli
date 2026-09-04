@@ -147,3 +147,26 @@ func TestErrorBodyTruncationKeepsValidUTF8(t *testing.T) {
 		t.Errorf("a truncated message should say so, got %q", he.Msg[len(he.Msg)-8:])
 	}
 }
+
+// TestLongErrorEnvelopeIsCapped pins that a server message is bounded like any
+// other body: the read window is wide enough to parse a long envelope, which
+// must not then reach the user in full.
+func TestLongErrorEnvelopeIsCapped(t *testing.T) {
+	long := strings.Repeat("x", 50000)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": long})
+	}))
+	defer srv.Close()
+	_, err := New(srv.URL, "", nil).Raw(context.Background(), "GET", "/-/list")
+	var he *HTTPError
+	if !asHTTPError(err, &he) {
+		t.Fatalf("error = %T, want *HTTPError", err)
+	}
+	if len(he.Msg) > maxErrorBody+len("…") {
+		t.Errorf("message is %d bytes, want it capped at %d", len(he.Msg), maxErrorBody)
+	}
+	if !strings.HasSuffix(he.Msg, "…") {
+		t.Error("a truncated message should say so")
+	}
+}

@@ -99,16 +99,20 @@ func errorMessage(raw []byte) string {
 		Error string `json:"error"`
 	}
 	if json.Unmarshal(raw, &envelope) == nil && envelope.Error != "" {
-		return envelope.Error
+		return truncate(envelope.Error)
 	}
-	msg := strings.TrimSpace(string(raw))
-	if len(msg) > maxErrorBody {
-		// Cutting by bytes can split a rune; dropping the remnant keeps the
-		// message valid UTF-8.
-		msg = strings.ToValidUTF8(msg[:maxErrorBody], "") + "…"
-	}
+	msg := truncate(strings.TrimSpace(string(raw)))
 	if msg == "" {
 		msg = "empty response body"
 	}
 	return msg
+}
+
+// truncate caps a message and says that it did. Cutting by bytes can split a
+// rune, so the remnant is dropped rather than left as an invalid sequence.
+func truncate(msg string) string {
+	if len(msg) <= maxErrorBody {
+		return msg
+	}
+	return strings.ToValidUTF8(msg[:maxErrorBody], "") + "…"
 }

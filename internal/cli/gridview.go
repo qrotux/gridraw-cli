@@ -151,7 +151,8 @@ func gridView(d *wire.Descriptor) object {
 // searchKeys names the columns the quick search covers. The descriptor lists
 // their titles, which are localised and not what a query spells, so each is
 // resolved back to its column key; a title matching no column is kept as it
-// came rather than dropped.
+// came rather than dropped. Two columns may share a title, in which case the
+// later one wins — the descriptor gives nothing better to match on.
 func searchKeys(d *wire.Descriptor) []string {
 	byTitle := make(map[string]string, len(d.Columns))
 	for _, c := range d.Columns {
