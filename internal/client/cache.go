@@ -33,11 +33,17 @@ type Cache struct {
 	TTL     time.Duration
 }
 
-// DefaultDir is ~/.cache/gridraw.
+// DefaultDir is $XDG_CACHE_HOME/gridraw, or ~/.cache/gridraw when that
+// variable is unset or empty. os.UserCacheDir is deliberately not used: on
+// darwin it answers ~/Library/Caches, which is not the promised path.
 func DefaultDir() (string, error) {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
+	dir := os.Getenv("XDG_CACHE_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, ".cache")
 	}
 	return filepath.Join(dir, "gridraw"), nil
 }

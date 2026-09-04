@@ -489,8 +489,8 @@ user cache directory:
 {cache}/gridraw/{profile}/{grid}.json
 ```
 
-`{cache}` is `$XDG_CACHE_HOME` when set, `~/.cache` on Linux and
-`~/Library/Caches` on macOS. The profile name is part of the path, so a `prod`
+`{cache}` is `$XDG_CACHE_HOME` when set, `~/.cache` otherwise, on every
+platform. The profile name is part of the path, so a `prod`
 and a `dev` grid of the same name never share an entry.
 
 | flag | effect |

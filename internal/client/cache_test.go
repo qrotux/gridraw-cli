@@ -11,6 +11,32 @@ import (
 	"time"
 )
 
+func TestDefaultDirFollowsXDG(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/xdg")
+	got, err := DefaultDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("/xdg", "gridraw"); got != want {
+		t.Errorf("DefaultDir = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultDirFallsBackToHomeCache(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DefaultDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".cache", "gridraw"); got != want {
+		t.Errorf("DefaultDir = %q, want %q", got, want)
+	}
+}
+
 func newCachedFixture(t *testing.T) (*Cache, *Client, *int32) {
 	t.Helper()
 	var hits int32
