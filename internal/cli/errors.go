@@ -2,6 +2,8 @@ package cli
 
 import (
 	"errors"
+	"fmt"
+	"io"
 
 	"github.com/qrotux/gridraw-cli/internal/config"
 )
@@ -64,4 +66,14 @@ func ExitCode(err error) int {
 		return 4
 	}
 	return 1
+}
+
+// PrintError writes the CLI's stderr report for a failed run: the message, and
+// after it the command that resumes an interrupted --all.
+func PrintError(w io.Writer, err error) {
+	fmt.Fprintln(w, "Error:", err)
+	var pe *pageError
+	if errors.As(err, &pe) && pe.Hint != "" {
+		fmt.Fprintln(w, "Resume with:", pe.Hint)
+	}
 }

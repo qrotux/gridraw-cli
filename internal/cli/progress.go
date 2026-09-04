@@ -64,30 +64,57 @@ func (r *reporter) Done() {
 	}
 }
 
+// resumeOptions are the flags of an interrupted run that a resumed run must
+// repeat: the two config flags select the profile, hence the host and the auth
+// header, and NullVal changes the text written for a null cell.
+type resumeOptions struct {
+	Config     string
+	ConfigFile string
+	NullVal    string
+}
+
 // resumeHint builds the command that continues an interrupted --all run.
-func resumeHint(args []string, format render.Format, formatName string, page int) string {
+func resumeHint(t tail, opt resumeOptions, format render.Format, page int) string {
 	if !format.Streaming() {
-		return fmt.Sprintf("the %s output cannot be appended to; rerun with -o jsonl to resume into the same file", formatName)
+		return fmt.Sprintf("the %s output cannot be appended to; rerun with -o %s to resume into the same file",
+			format, appendable(format))
 	}
 	var b strings.Builder
-	b.WriteString("gridraw from")
-	// The tail rejects a keyword given twice, so the original page clause has
-	// to go: the hint supplies its own.
-	for i, a := range args {
-		if i > 0 && (i%2 == 1) && strings.EqualFold(a, "page") {
-			continue
+	b.WriteString("gridraw from ")
+	b.WriteString(shellQuote(t.Grid))
+	// t.Page is deliberately dropped: the tail rejects a keyword given twice
+	// and the hint supplies the page to resume from.
+	for _, c := range []struct{ keyword, value string }{
+		{"columns", t.Columns}, {"where", t.Where}, {"order", t.Order}, {"search", t.Search},
+	} {
+		if c.value != "" {
+			fmt.Fprintf(&b, " %s %s", c.keyword, shellQuote(c.value))
 		}
-		if i > 1 && (i%2 == 0) && strings.EqualFold(args[i-1], "page") {
-			continue
-		}
-		b.WriteString(" ")
-		b.WriteString(shellQuote(a))
 	}
-	fmt.Fprintf(&b, " -o %s --all page %d", formatName, page)
+	if t.Limit != 0 {
+		fmt.Fprintf(&b, " limit %d", t.Limit)
+	}
+	for _, f := range []struct{ name, value string }{
+		{"--config", opt.Config}, {"--config-file", opt.ConfigFile}, {"--null-val", opt.NullVal},
+	} {
+		if f.value != "" {
+			fmt.Fprintf(&b, " %s %s", f.name, shellQuote(f.value))
+		}
+	}
+	fmt.Fprintf(&b, " -o %s --all page %d", format, page)
 	if format == render.FormatCSV || format == render.FormatTSV {
 		b.WriteString(" --no-header")
 	}
 	return b.String()
+}
+
+// appendable names the sibling of a non-streaming format that a resumed run
+// can append to the same file.
+func appendable(format render.Format) render.Format {
+	if format == render.FormatYAML {
+		return render.FormatYAMLA
+	}
+	return render.FormatJSONL
 }
 
 // shellQuote wraps an argument in single quotes when it holds anything the

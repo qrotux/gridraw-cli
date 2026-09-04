@@ -61,13 +61,13 @@ func newFromCmd() *cobra.Command {
 			opt := render.Options{Columns: columns, NullVal: nullVal, NoHeader: noHeader}
 			if all {
 				err := streamAll(cmd.Context(), cmd, api, t.Grid, req, format, opt, rep)
-				if err != nil {
-					if page, ok := failedPage(err); ok {
-						fmt.Fprintln(cmd.ErrOrStderr(), "Resume with:", resumeHint(args, format, string(format), page))
-					}
-					return err
+				var pe *pageError
+				if errors.As(err, &pe) {
+					conf, _ := cmd.Flags().GetString("config")
+					confFile, _ := cmd.Flags().GetString("config-file")
+					pe.Hint = resumeHint(t, resumeOptions{Config: conf, ConfigFile: confFile, NullVal: nullVal}, format, pe.Page)
 				}
-				return nil
+				return err
 			}
 			return streamOne(cmd.Context(), cmd, api, t.Grid, req, format, opt, rep)
 		},
@@ -201,11 +201,13 @@ func streamAll(ctx context.Context, cmd *cobra.Command, api *client.Client, grid
 			headed = true
 			rep.Total(resp.Total)
 			if err := w.Head(resp.Total); err != nil {
+				rep.Done()
 				return err
 			}
 		}
 		for _, row := range resp.Rows {
 			if err := w.Row(row); err != nil {
+				rep.Done()
 				return err
 			}
 			written++
@@ -220,19 +222,13 @@ func streamAll(ctx context.Context, cmd *cobra.Command, api *client.Client, grid
 	return w.Close()
 }
 
-// pageError names the page whose request failed, so the resume hint can be built.
+// pageError names the page whose request failed. Hint is filled in by the
+// command, which knows the tail and the flags the resume command has to carry.
 type pageError struct {
 	Page int
+	Hint string
 	Err  error
 }
 
 func (e *pageError) Error() string { return fmt.Sprintf("page %d: %s", e.Page, e.Err) }
 func (e *pageError) Unwrap() error { return e.Err }
-
-func failedPage(err error) (int, bool) {
-	var pe *pageError
-	if errors.As(err, &pe) {
-		return pe.Page, true
-	}
-	return 0, false
-}

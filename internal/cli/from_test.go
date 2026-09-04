@@ -322,19 +322,56 @@ func TestAllLeavesTheStreamUnclosedOnFailure(t *testing.T) {
 }
 
 func TestResumeHint(t *testing.T) {
-	got := resumeHint([]string{"users", "where", "x = 1"}, render.FormatCSV, "csv", 37)
+	got := resumeHint(tail{Grid: "users", Where: "x = 1"}, resumeOptions{}, render.FormatCSV, 37)
 	if !strings.Contains(got, "--all page 37") || !strings.Contains(got, "--no-header") {
 		t.Errorf("hint = %q, want the page and --no-header", got)
 	}
-	// The tail rejects "page" twice, so a run that already named a page must
-	// not have that clause copied into the hint.
-	got = resumeHint([]string{"users", "page", "2", "limit", "50"}, render.FormatJSONL, "jsonl", 9)
-	if got != "gridraw from users limit 50 -o jsonl --all page 9" {
-		t.Errorf("hint = %q, want the original page clause replaced", got)
-	}
-	got = resumeHint([]string{"users"}, render.FormatJSONA, "jsona", 4)
+	got = resumeHint(tail{Grid: "users"}, resumeOptions{}, render.FormatJSONA, 4)
 	if !strings.Contains(got, "jsonl") {
 		t.Errorf("hint = %q, want it to point at jsonl", got)
+	}
+	// yaml is not appendable either, but its sibling is yamla, not jsonl.
+	got = resumeHint(tail{Grid: "users"}, resumeOptions{}, render.FormatYAML, 4)
+	if !strings.Contains(got, "-o yamla") || strings.Contains(got, "jsonl") {
+		t.Errorf("hint = %q, want it to point at yamla", got)
+	}
+}
+
+// TestResumeHintCarriesTheFlagsThatChangeTheOutput pins the three flags a
+// resumed run must repeat: the two config flags pick the host and the auth
+// header, and --null-val changes how a null cell is written.
+func TestResumeHintCarriesTheFlagsThatChangeTheOutput(t *testing.T) {
+	opt := resumeOptions{Config: "prod", ConfigFile: "/etc/gridraw.yaml", NullVal: "NULL"}
+	got := resumeHint(tail{Grid: "users"}, opt, render.FormatJSONL, 2)
+	for _, want := range []string{"--config prod", "--config-file /etc/gridraw.yaml", "--null-val NULL"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("hint = %q, want it to carry %q", got, want)
+		}
+	}
+}
+
+// TestResumeHintReplacesTheOriginalPage pins that a run which already named a
+// page does not produce a hint with the keyword twice, which the tail rejects.
+func TestResumeHintReplacesTheOriginalPage(t *testing.T) {
+	got := resumeHint(tail{Grid: "users", Page: 2, Limit: 50, Order: "-id"}, resumeOptions{}, render.FormatJSONL, 9)
+	if got != "gridraw from users order -id limit 50 -o jsonl --all page 9" {
+		t.Errorf("hint = %q, want the original page clause replaced", got)
+	}
+}
+
+// TestPrintErrorPutsTheHintAfterTheError pins the stderr order: the hint
+// explains the failure above it.
+func TestPrintErrorPutsTheHintAfterTheError(t *testing.T) {
+	var b bytes.Buffer
+	PrintError(&b, &pageError{Page: 3, Hint: "gridraw from users -o jsonl --all page 3", Err: errors.New("boom")})
+	want := "Error: page 3: boom\nResume with: gridraw from users -o jsonl --all page 3\n"
+	if b.String() != want {
+		t.Errorf("stderr = %q, want %q", b.String(), want)
+	}
+	b.Reset()
+	PrintError(&b, errors.New("plain"))
+	if b.String() != "Error: plain\n" {
+		t.Errorf("stderr = %q, want the message alone", b.String())
 	}
 }
 
