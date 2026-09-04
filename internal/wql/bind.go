@@ -122,16 +122,56 @@ func convert(v any, col *wire.Column, p Predicate, src string) (any, error) {
 			return nil, typeErr(v, col, p, src, "a quoted uuid")
 		}
 		return strings.ToLower(s), nil
-	case wire.TypeString, wire.TypeEnum, wire.TypeDate, wire.TypeTime, wire.TypeDatetime:
+	case wire.TypeEnum:
+		s, ok := v.(string)
+		if !ok {
+			return nil, typeErr(v, col, p, src, "a quoted string")
+		}
+		return s, checkEnum(s, col, p, src)
+	case wire.TypeString, wire.TypeDate, wire.TypeTime, wire.TypeDatetime:
 		s, ok := v.(string)
 		if !ok {
 			return nil, typeErr(v, col, p, src, "a quoted string")
 		}
 		return s, nil
-	case wire.TypeJSON:
-		return nil, errAt(src, p.Pos, "column %q is a json column and cannot be filtered", col.Key)
+	default:
+		return nil, errAt(src, p.Pos, "column %q has the type %s, which this version does not know how to filter", col.Key, columnType(col))
 	}
-	return v, nil
+}
+
+// checkEnum rejects a value the descriptor does not publish. A descriptor may
+// omit enumValues, and then any string goes.
+func checkEnum(s string, col *wire.Column, p Predicate, src string) error {
+	allowed := enumValues(col)
+	if len(allowed) == 0 {
+		return nil
+	}
+	for _, v := range allowed {
+		if v == s {
+			return nil
+		}
+	}
+	hint := "allowed values: " + strings.Join(allowed, ", ")
+	if best := closest(s, allowed); best != "" {
+		hint = fmt.Sprintf("did you mean %q?", best)
+	}
+	return &Error{
+		Msg:    fmt.Sprintf("column %q has no value %q", col.Key, s),
+		Pos:    p.Pos,
+		Source: src,
+		Hint:   hint,
+	}
+}
+
+func enumValues(col *wire.Column) []string {
+	if col.Filter == nil {
+		return nil
+	}
+	out := make([]string, 0, len(col.Filter.EnumValues))
+	for _, e := range col.Filter.EnumValues {
+		out = append(out, e.Value)
+	}
+	return out
 }
 
 func typeErr(v any, col *wire.Column, p Predicate, src, want string) error {
@@ -172,16 +212,28 @@ func operatorNames(col *wire.Column) []string {
 
 // suggest offers the closest column key when the typo is small.
 func suggest(field string, d *wire.Descriptor) string {
-	best, bestDist := "", 3 // three edits is already a different word
-	for _, c := range d.Columns {
-		if dist := editDistance(strings.ToLower(field), strings.ToLower(c.Key)); dist < bestDist {
-			best, bestDist = c.Key, dist
-		}
-	}
+	best := closest(field, columnKeys(d))
 	if best == "" {
 		return "known columns: " + strings.Join(columnKeys(d), ", ")
 	}
 	return fmt.Sprintf("did you mean %q?", best)
+}
+
+// closest returns the candidate a plausible typo away from word, or "". The
+// budget is relative to the two lengths: on an absolute one, every two-letter
+// word would "mean" every short key.
+func closest(word string, candidates []string) string {
+	best, bestDist := "", 0
+	for _, c := range candidates {
+		dist := editDistance(strings.ToLower(word), strings.ToLower(c))
+		if dist >= 3 || 3*dist > len(word)+len(c) {
+			continue
+		}
+		if best == "" || dist < bestDist {
+			best, bestDist = c, dist
+		}
+	}
+	return best
 }
 
 func columnKeys(d *wire.Descriptor) []string {
@@ -206,20 +258,9 @@ func editDistance(a, b string) int {
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
-			cur[j] = min3(cur[j-1]+1, prev[j]+1, prev[j-1]+cost)
+			cur[j] = min(cur[j-1]+1, prev[j]+1, prev[j-1]+cost)
 		}
 		prev, cur = cur, prev
 	}
 	return prev[len(b)]
-}
-
-func min3(a, b, c int) int {
-	m := a
-	if b < m {
-		m = b
-	}
-	if c < m {
-		m = c
-	}
-	return m
 }

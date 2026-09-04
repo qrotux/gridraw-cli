@@ -16,6 +16,8 @@ func testDescriptor() *wire.Descriptor {
 		}
 		return f
 	}
+	role := all(wire.OpIn, wire.OpNotIn)
+	role.EnumValues = []wire.EnumValue{{Value: "admin", Label: "Admin"}, {Value: "mod", Label: "Moderator"}}
 	return &wire.Descriptor{
 		Name: "users", IDColumn: "id", PageSize: 25,
 		Columns: []wire.Column{
@@ -26,7 +28,8 @@ func testDescriptor() *wire.Descriptor {
 			{Key: "balance", Type: wire.TypeDecimal, DefaultVisible: true,
 				Filter: all(wire.OpGte, wire.OpBetween)},
 			{Key: "isBanned", Type: wire.TypeBoolean, Filter: all(wire.OpEq)},
-			{Key: "role", Type: wire.TypeEnum, Filter: all(wire.OpIn, wire.OpNotIn)},
+			{Key: "fee", Type: wire.TypeDecimal, Filter: all(wire.OpIn)},
+			{Key: "role", Type: wire.TypeEnum, Filter: role},
 			{Key: "id", Type: wire.TypeUUID, Filter: all(wire.OpEq, wire.OpIn)},
 			{Key: "lastSeenAt", Type: wire.TypeDatetime, Filter: all(wire.OpGte, wire.OpIsNull)},
 			{Key: "tags", Type: wire.TypeString, Array: true,
@@ -83,6 +86,28 @@ func TestBindDecimalCoercion(t *testing.T) {
 	if string(raw) != `["1","2.50"]` {
 		t.Errorf("range = %s, want both bounds as strings", raw)
 	}
+	got, err = bind(t, "fee in (1, '2.50')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(got[0][0].Value)
+	if string(raw) != `["1","2.50"]` {
+		t.Errorf("list = %s, want every element as a string", raw)
+	}
+}
+
+func TestBindEnumValues(t *testing.T) {
+	if _, err := bind(t, "role in ('admin')"); err != nil {
+		t.Fatalf("a published enum value: %v", err)
+	}
+	_, err := bind(t, "role in ('adnim')")
+	if err == nil || !strings.Contains(err.Error(), `did you mean "admin"`) {
+		t.Errorf("error = %v, want the unpublished value rejected with a suggestion", err)
+	}
+	_, err = bind(t, "role in ('nonesuch')")
+	if err == nil || !strings.Contains(err.Error(), "allowed values: admin, mod") {
+		t.Errorf("error = %v, want the allowed values listed", err)
+	}
 }
 
 func TestBindUUIDLowercased(t *testing.T) {
@@ -104,6 +129,8 @@ func TestBindErrors(t *testing.T) {
 		{"email = 4", "is of type string"},
 		{"isBanned = 'yes'", "is of type boolean"},
 		{"balance >= true", "is of type decimal"},
+		{"tags has any (4)", "is of type string[]"},
+		{"zzzzzzzzz = 'x'", "known columns: email, rating"},
 	} {
 		_, err := bind(t, tc.src)
 		if err == nil {
