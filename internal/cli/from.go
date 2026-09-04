@@ -28,7 +28,10 @@ func newFromCmd() *cobra.Command {
 		// The tail is split from the flags by splitArgs, not by pflag.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.InheritedFlags() // merges --config and --config-file into cmd.Flags()
+			// splitArgs has to see --config and --config-file, so the root's
+			// persistent flags are merged into this command's set here. The
+			// merge is idempotent; cobra's help-flag setup runs it as well.
+			cmd.InheritedFlags()
 			tailArgs, flagArgs := splitArgs(args, cmd.Flags())
 			if err := cmd.Flags().Parse(flagArgs); err != nil {
 				return &UsageError{Msg: err.Error()}
