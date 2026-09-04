@@ -24,7 +24,12 @@ func newFromCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   `from GRID [columns "a,b"] [where "…"] [order "a,-b"] [search "…"] [limit N] [page M]`,
 		Short: "Query a grid's rows",
-		Args:  cobra.ArbitraryArgs,
+		Long: `Query a grid's rows.
+
+The clauses are positional keywords and may come in any order, each at most
+once. A keyword always takes the next word, so no flag may sit between a
+keyword and its value. Run "gridraw help where" for the filter language.`,
+		Args: cobra.ArbitraryArgs,
 		// The tail is split from the flags by splitArgs, not by pflag.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

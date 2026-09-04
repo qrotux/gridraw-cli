@@ -257,6 +257,8 @@ usage error naming the grid.
 
 ## The `where` language
 
+The same reference is in the binary: `gridraw help where`.
+
 ```
 expr      := term ("or" term)*
 term      := factor ("and" factor)*

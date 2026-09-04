@@ -18,7 +18,7 @@ func Execute() error {
 	}
 	root.PersistentFlags().String("config", "", "configuration profile to use")
 	root.PersistentFlags().String("config-file", "", "read this configuration file only")
-	root.AddCommand(newConfigCmd(), newListCmd(), newGridCmd(), newFromCmd())
+	root.AddCommand(newConfigCmd(), newListCmd(), newGridCmd(), newFromCmd(), newWhereTopic())
 	return root.ExecuteContext(context.Background())
 }
 
