@@ -54,6 +54,21 @@ Three flags are accepted by every command:
 
 `gridraw completion bash|zsh|fish|powershell` prints a shell completion script.
 
+## Version
+
+```console
+$ gridraw --version
+gridraw version v0.1.0
+```
+
+A build from a checkout reports the module pseudo-version, which carries the
+commit and a `+dirty` marker for uncommitted changes. A release stamps the tag
+instead:
+
+```sh
+go build -ldflags "-X github.com/qrotux/gridraw-cli/internal/cli.version=v0.1.0" -o bin/gridraw ./cmd/gridraw
+```
+
 ## Configuration
 
 A configuration file holds named profiles — one per server you talk to — and

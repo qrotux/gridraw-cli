@@ -13,6 +13,7 @@ func Execute() error {
 	root := &cobra.Command{
 		Use:           "gridraw",
 		Short:         "CLI access to gridraw table sources",
+		Version:       versionString(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
