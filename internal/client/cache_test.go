@@ -70,6 +70,41 @@ func TestCacheOffWritesNothing(t *testing.T) {
 	}
 }
 
+func TestUnsafeGridNameIsNotCached(t *testing.T) {
+	for _, name := range []string{"../escape", "sub/dir"} {
+		t.Run(name, func(t *testing.T) {
+			cache, c, hits := newCachedFixture(t)
+			ctx := context.Background()
+
+			d, err := cache.Descriptor(ctx, c, name, CacheDefault)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d == nil || d.Name != "users" {
+				t.Fatalf("Descriptor = %+v, want the fetched descriptor", d)
+			}
+
+			var entries []os.DirEntry
+			filepath.WalkDir(cache.Dir, func(p string, e os.DirEntry, err error) error {
+				if err == nil && !e.IsDir() {
+					entries = append(entries, e)
+				}
+				return nil
+			})
+			if len(entries) != 0 {
+				t.Errorf("cache directory holds %d files, want 0 for an unsafe grid name", len(entries))
+			}
+
+			if _, err := cache.Descriptor(ctx, c, name, CacheDefault); err != nil {
+				t.Fatal(err)
+			}
+			if *hits != 2 {
+				t.Errorf("hits = %d, want 2: an unsafe grid name must never be served from the cache", *hits)
+			}
+		})
+	}
+}
+
 func TestCorruptEntryIsRefetched(t *testing.T) {
 	cache, c, hits := newCachedFixture(t)
 	path := filepath.Join(cache.Dir, "default", "users.json")

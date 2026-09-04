@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/qrotux/gridraw-cli/internal/wire"
@@ -16,9 +17,12 @@ const DefaultTTL = 5 * time.Minute
 type Mode int
 
 const (
-	CacheDefault Mode = iota // read when fresh, write on a miss
-	CacheRefresh             // ignore what is stored, fetch and write
-	CacheOff                 // neither read nor write
+	// CacheDefault reads the entry when it is fresh and writes on a miss.
+	CacheDefault Mode = iota
+	// CacheRefresh ignores what is stored, fetching and writing unconditionally.
+	CacheRefresh
+	// CacheOff neither reads nor writes the cache.
+	CacheOff
 )
 
 // Cache stores descriptors under Dir/Profile/{grid}.json. The profile is part
@@ -60,7 +64,10 @@ func (c *Cache) Descriptor(ctx context.Context, api *Client, grid string, mode M
 // Put writes a descriptor body into the cache, ignoring failures. It is called
 // on its own by `gridraw grid {id}`, which always fetches and warms the entry.
 func (c *Cache) Put(grid string, raw []byte) {
-	path := c.path(grid)
+	path, ok := c.path(grid)
+	if !ok {
+		return
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
@@ -68,7 +75,10 @@ func (c *Cache) Put(grid string, raw []byte) {
 }
 
 func (c *Cache) get(grid string) *wire.Descriptor {
-	path := c.path(grid)
+	path, ok := c.path(grid)
+	if !ok {
+		return nil
+	}
 	info, err := os.Stat(path)
 	if err != nil || time.Since(info.ModTime()) > c.ttl() {
 		return nil
@@ -84,10 +94,16 @@ func (c *Cache) get(grid string) *wire.Descriptor {
 	return &d
 }
 
-func (c *Cache) path(grid string) string {
-	// A grid name is a path segment on the wire, so it cannot contain a
-	// separator; keeping the name verbatim makes the cache inspectable.
-	return filepath.Join(c.Dir, c.Profile, grid+".json")
+// path returns Dir/Profile/{grid}.json and reports whether grid is usable as
+// a single path segment. A grid name reaches here straight from a
+// command-line argument, so one containing a separator or a ".." segment is
+// refused rather than sanitised: the caller treats a refusal as a cache miss
+// or a no-op, which costs one HTTP request and nothing else.
+func (c *Cache) path(grid string) (string, bool) {
+	if grid == "" || grid == "." || grid == ".." || strings.ContainsAny(grid, `/\`) {
+		return "", false
+	}
+	return filepath.Join(c.Dir, c.Profile, grid+".json"), true
 }
 
 func (c *Cache) ttl() time.Duration {
