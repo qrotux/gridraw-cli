@@ -1,6 +1,7 @@
 # gridraw
 
-`gridraw` is a command-line client for a gridraw server. It
+`gridraw` is a command-line client for a
+[gridraw](https://github.com/qrotux/gridraw-go) server. It
 lists the grids a server publishes, prints a grid's descriptor, and queries
 rows with a small filter language, writing the result in one of seven formats
 that a shell pipeline can consume.
@@ -33,6 +34,8 @@ agent driving this CLI are in [AGENTS.md](AGENTS.md).
 - [Exit codes](#exit-codes)
 - [The descriptor cache](#the-descriptor-cache)
 - [Development](#development)
+- [Links](#links)
+- [Dependencies](#dependencies)
 
 ## Install
 
@@ -640,6 +643,17 @@ Windows), and then one job publishes them with a `SHA256SUMS` file to the
 GitHub release. The release notes are written for you: a table of per-platform
 download links, how to check a download against the checksums, and the
 `go install` line for the tag, followed by GitHub's generated changelog.
+
+## Links
+
+- Server: [gridraw-go](https://github.com/qrotux/gridraw-go)
+- Client: [@qrotux/gridraw-shadcn-react](https://github.com/qrotux/gridraw-shadcn-react)
+
+## Dependencies
+
+- [spf13/cobra](https://github.com/spf13/cobra) and [spf13/pflag](https://github.com/spf13/pflag) for the command tree and flags
+- [gopkg.in/yaml.v3](https://github.com/go-yaml/yaml) for the configuration file
+- [golang.org/x/term](https://pkg.go.dev/golang.org/x/term) to detect a terminal on stdout
 
 ## License
 
